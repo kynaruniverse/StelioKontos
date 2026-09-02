@@ -1,0 +1,321 @@
+import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
+
+const WORLD_SIZE = 54;
+const MAX_SPEED = 10;
+const ACCELERATION = 18;
+const FRICTION = 9;
+
+type ControlState = {
+  forward: boolean;
+  backward: boolean;
+  left: boolean;
+  right: boolean;
+};
+
+type Landmark = {
+  position: THREE.Vector3;
+  title: string;
+  label: string;
+  colour: number;
+};
+
+const palette = {
+  night: 0x111327,
+  midnight: 0x1c2145,
+  paper: 0xf5edd9,
+  coral: 0xf25d4d,
+  yellow: 0xf5d44f,
+  blue: 0x5ca8d8,
+  green: 0x6eaa79,
+  ink: 0x10111d,
+};
+
+function createTextSprite(text: string, colour = "#f5edd9", background = "#111327") {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  if (!context) return new THREE.Sprite();
+  context.fillStyle = background;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = colour;
+  context.lineWidth = 6;
+  context.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+  context.fillStyle = colour;
+  context.font = "700 34px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text.toUpperCase(), canvas.width / 2, canvas.height / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(4.4, 1.1, 1);
+  return sprite;
+}
+
+function addBlock(group: THREE.Group, position: [number, number, number], size: [number, number, number], colour: number, rotation = 0) {
+  const geometry = new THREE.BoxGeometry(...size);
+  const material = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.92, flatShading: true });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(...position);
+  mesh.rotation.y = rotation;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function addTree(group: THREE.Group, x: number, z: number, scale = 1) {
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.24 * scale, 0.34 * scale, 1.6 * scale, 6),
+    new THREE.MeshStandardMaterial({ color: 0x8d6847, flatShading: true }),
+  );
+  trunk.position.set(x, 0.8 * scale, z);
+  trunk.castShadow = true;
+  group.add(trunk);
+  const crown = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1.4 * scale, 0),
+    new THREE.MeshStandardMaterial({ color: palette.green, roughness: 1, flatShading: true }),
+  );
+  crown.position.set(x, 2.1 * scale, z);
+  crown.castShadow = true;
+  group.add(crown);
+}
+
+function addLandmark(group: THREE.Group, landmark: Landmark) {
+  const island = new THREE.Group();
+  island.position.copy(landmark.position);
+  addBlock(island, [0, -0.55, 0], [6.8, 0.8, 5.2], 0x2e396b, 0.08);
+  addBlock(island, [0, 0.1, 0], [5.6, 0.5, 4.2], landmark.colour, 0.08);
+  addBlock(island, [0, 1.4, 0], [4.2, 2.4, 2.4], palette.midnight, -0.08);
+  const sign = createTextSprite(landmark.label, "#f5edd9", "#111327");
+  sign.position.set(0, 3.4, 0);
+  island.add(sign);
+  const beacon = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.55, 0),
+    new THREE.MeshStandardMaterial({ color: landmark.colour, emissive: landmark.colour, emissiveIntensity: 0.35, flatShading: true }),
+  );
+  beacon.position.set(0, 3.1, -1.5);
+  beacon.castShadow = true;
+  island.add(beacon);
+  group.add(island);
+}
+
+export default function ThreeWorld() {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<number | null>(null);
+  const [started, setStarted] = useState(false);
+  const [activeLandmark, setActiveLandmark] = useState("THE START LINE");
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(palette.night);
+    scene.fog = new THREE.Fog(palette.night, 25, 95);
+
+    const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 150);
+    camera.position.set(0, 9, 15);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    mount.appendChild(renderer.domElement);
+
+    const ambient = new THREE.HemisphereLight(0xd9e5ff, 0x10111d, 2.4);
+    scene.add(ambient);
+    const keyLight = new THREE.DirectionalLight(0xffe6b4, 4.2);
+    keyLight.position.set(-12, 20, 10);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(1024, 1024);
+    keyLight.shadow.camera.left = -35;
+    keyLight.shadow.camera.right = 35;
+    keyLight.shadow.camera.top = 35;
+    keyLight.shadow.camera.bottom = -35;
+    scene.add(keyLight);
+
+    const world = new THREE.Group();
+    scene.add(world);
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 1, 1),
+      new THREE.MeshStandardMaterial({ color: palette.midnight, roughness: 1, flatShading: true }),
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    world.add(ground);
+
+    for (let x = -24; x <= 24; x += 6) {
+      addBlock(world, [x, -0.45, -24], [5.4, 0.9, 1.2], x % 12 === 0 ? palette.coral : palette.blue, x * 0.01);
+    }
+    for (let z = -18; z <= 18; z += 6) {
+      addBlock(world, [-24, -0.45, z], [1.2, 0.9, 5.4], z % 12 === 0 ? palette.yellow : palette.green, z * 0.01);
+    }
+
+    addBlock(world, [2, 0.5, -4], [5, 1, 2], palette.coral, -0.12);
+    addBlock(world, [5.3, 1.5, -4], [2, 3, 2], palette.coral, -0.12);
+    addBlock(world, [8.2, 2.7, -4], [3.5, 0.7, 2], palette.yellow, -0.12);
+    addBlock(world, [-3, 0.4, 6], [6, 0.8, 2], palette.blue, 0.1);
+    addBlock(world, [-6, 1.2, 6], [2, 2.4, 2], palette.blue, 0.1);
+    addBlock(world, [-8.8, 2.4, 6], [3.5, 0.6, 2], palette.yellow, 0.1);
+
+    for (const tree of [[-15, -11, 1.1], [-11, -16, 0.8], [16, -12, 1.1], [18, 8, 0.9], [-15, 15, 1.1], [11, 15, 0.7]] as const) {
+      addTree(world, tree[0], tree[1], tree[2]);
+    }
+
+    const landmarks: Landmark[] = [
+      { position: new THREE.Vector3(-9, 0, -7), title: "Make something", label: "MAKE", colour: palette.coral },
+      { position: new THREE.Vector3(10, 0, -8), title: "Wander somewhere", label: "WANDER", colour: palette.yellow },
+      { position: new THREE.Vector3(9, 0, 10), title: "Play a little", label: "PLAY", colour: palette.blue },
+    ];
+    landmarks.forEach((landmark) => addLandmark(world, landmark));
+
+    const obstacles = [
+      { x: 2, z: -4, halfX: 3.2, halfZ: 1.4 },
+      { x: 5.3, z: -4, halfX: 1.3, halfZ: 1.4 },
+      { x: 8.2, z: -4, halfX: 2.3, halfZ: 1.4 },
+      { x: -3, z: 6, halfX: 3.3, halfZ: 1.4 },
+      { x: -6, z: 6, halfX: 1.3, halfZ: 1.4 },
+      { x: -8.8, z: 6, halfX: 2.3, halfZ: 1.4 },
+      ...landmarks.map((landmark) => ({ x: landmark.position.x, z: landmark.position.z, halfX: 3.15, halfZ: 2.55 })),
+    ];
+    const collidesWithWorld = (position: THREE.Vector3) => obstacles.some((obstacle) =>
+      Math.abs(position.x - obstacle.x) < obstacle.halfX + 0.88 && Math.abs(position.z - obstacle.z) < obstacle.halfZ + 1.05,
+    );
+
+    const car = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.6, 2.7), new THREE.MeshStandardMaterial({ color: palette.coral, roughness: 0.75, flatShading: true }));
+    body.position.y = 0.65;
+    body.castShadow = true;
+    car.add(body);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.65, 1.4), new THREE.MeshStandardMaterial({ color: palette.paper, roughness: 0.55, flatShading: true }));
+    cabin.position.set(0, 1.1, -0.1);
+    cabin.castShadow = true;
+    car.add(cabin);
+    const bumper = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.18, 0.22), new THREE.MeshStandardMaterial({ color: palette.yellow, flatShading: true }));
+    bumper.position.set(0, 0.52, 1.36);
+    car.add(bumper);
+    [-0.78, 0.78].forEach((x) => [-0.82, 0.82].forEach((z) => {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.24, 8), new THREE.MeshStandardMaterial({ color: palette.ink, flatShading: true }));
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(x, 0.38, z);
+      wheel.castShadow = true;
+      car.add(wheel);
+    }));
+    car.position.set(0, 0, 10);
+    world.add(car);
+
+    const controls: ControlState = { forward: false, backward: false, left: false, right: false };
+    const velocity = new THREE.Vector3();
+    const clock = new THREE.Clock();
+    const targetCamera = new THREE.Vector3();
+    const keys: Record<string, keyof ControlState> = { ArrowUp: "forward", w: "forward", ArrowDown: "backward", s: "backward", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" };
+    const keyDown = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = true; event.preventDefault(); } };
+    const keyUp = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = false; event.preventDefault(); } };
+    window.addEventListener("keydown", keyDown);
+    window.addEventListener("keyup", keyUp);
+
+    const resize = () => {
+      const width = mount.clientWidth;
+      const height = mount.clientHeight;
+      camera.aspect = width / Math.max(height, 1);
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height, false);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const checkLandmarks = () => {
+      let next = "THE START LINE";
+      landmarks.forEach((landmark) => {
+        if (car.position.distanceTo(landmark.position) < 5.5) next = landmark.title;
+      });
+      setActiveLandmark((current) => current === next ? current : next);
+    };
+
+    const animate = () => {
+      const delta = Math.min(clock.getDelta(), 0.04);
+      const input = new THREE.Vector3((controls.right ? 1 : 0) - (controls.left ? 1 : 0), 0, (controls.backward ? 1 : 0) - (controls.forward ? 1 : 0));
+      if (input.lengthSq() > 0) {
+        input.normalize();
+        velocity.x = THREE.MathUtils.damp(velocity.x, input.x * MAX_SPEED, ACCELERATION, delta);
+        velocity.z = THREE.MathUtils.damp(velocity.z, input.z * MAX_SPEED, ACCELERATION, delta);
+        car.rotation.y = THREE.MathUtils.damp(car.rotation.y, Math.atan2(velocity.x, velocity.z), 10, delta);
+      } else {
+        velocity.x = THREE.MathUtils.damp(velocity.x, 0, FRICTION, delta);
+        velocity.z = THREE.MathUtils.damp(velocity.z, 0, FRICTION, delta);
+      }
+      const previousPosition = car.position.clone();
+      car.position.addScaledVector(velocity, delta);
+      car.position.x = THREE.MathUtils.clamp(car.position.x, -WORLD_SIZE / 2 + 2, WORLD_SIZE / 2 - 2);
+      car.position.z = THREE.MathUtils.clamp(car.position.z, -WORLD_SIZE / 2 + 2, WORLD_SIZE / 2 - 2);
+      if (collidesWithWorld(car.position)) {
+        car.position.copy(previousPosition);
+        velocity.multiplyScalar(-0.18);
+      }
+      body.rotation.z = THREE.MathUtils.damp(body.rotation.z, -velocity.x * 0.035, 8, delta);
+      beaconPulse(world, delta);
+      targetCamera.set(car.position.x, 7.5, car.position.z + 12);
+      camera.position.lerp(targetCamera, 1 - Math.pow(0.001, delta));
+      camera.lookAt(car.position.x, 0.8, car.position.z - 2);
+      checkLandmarks();
+      renderer.render(scene, camera);
+      frameRef.current = requestAnimationFrame(animate);
+    };
+    const beaconPulse = (root: THREE.Group, delta: number) => {
+      root.children.forEach((child) => {
+        if (child instanceof THREE.Group) child.children.forEach((nested) => { if (nested instanceof THREE.Mesh && nested.geometry instanceof THREE.OctahedronGeometry) nested.rotation.y += delta * 2; });
+      });
+    };
+    animate();
+
+    return () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      window.removeEventListener("keydown", keyDown);
+      window.removeEventListener("keyup", keyUp);
+      window.removeEventListener("resize", resize);
+      renderer.dispose();
+      mount.removeChild(renderer.domElement);
+    };
+  }, []);
+
+  const press = (control: keyof ControlState, value: boolean) => {
+    window.dispatchEvent(new KeyboardEvent(value ? "keydown" : "keyup", { key: control === "forward" ? "w" : control === "backward" ? "s" : control === "left" ? "a" : "d" }));
+  };
+
+  return (
+    <main className="three-world-shell">
+      <div ref={mountRef} className="three-world-canvas" aria-label="Interactive low-poly Sidequest world" />
+      <div className="world-vignette" />
+      <header className="world-topbar">
+        <button className="world-brand" onClick={() => window.location.reload()} aria-label="Restart Sidequest world"><span className="world-brand-mark">SQ</span><span>SIDEQUEST</span></button>
+        <div className="world-status"><span className="status-pip" /> QUEST 001 / ONLINE</div>
+        <div className="world-status world-status-right">{activeLandmark.toUpperCase()}</div>
+      </header>
+      <div className="world-hud">
+        <span>ARROW KEYS / WASD</span><span>EXPLORE THE ISLAND</span>
+      </div>
+      <section className={`world-intro ${started ? "is-dismissed" : ""}`} aria-hidden={started}>
+        <p className="world-kicker">A SIDEQUEST ORIGINAL / 001</p>
+        <h1>You found a<br /><i>side quest.</i></h1>
+        <p className="world-lede">A small interactive world for tiny ideas, curious detours, and play without a point. Drive around and find your next direction.</p>
+        <button className="world-start" onClick={() => setStarted(true)}>Start exploring <span>↗</span></button>
+        <p className="world-note">No download. No account. Just a browser and a direction.</p>
+      </section>
+      <aside className="world-legend" aria-label="World landmarks"><span>MAKE</span><span>WANDER</span><span>PLAY</span></aside>
+      <div className="world-controls" aria-label="Touch controls">
+        <button onPointerDown={() => press("left", true)} onPointerUp={() => press("left", false)} onPointerCancel={() => press("left", false)} aria-label="Turn left">←</button>
+        <button onPointerDown={() => press("forward", true)} onPointerUp={() => press("forward", false)} onPointerCancel={() => press("forward", false)} aria-label="Move forward">↑</button>
+        <button onPointerDown={() => press("backward", true)} onPointerUp={() => press("backward", false)} onPointerCancel={() => press("backward", false)} aria-label="Move backward">↓</button>
+        <button onPointerDown={() => press("right", true)} onPointerUp={() => press("right", false)} onPointerCancel={() => press("right", false)} aria-label="Turn right">→</button>
+      </div>
+      <footer className="world-footer"><span>THREE.JS / WEBGL / SIDEQUEST FIELD NOTES</span><span>DRIVE TO A COLOUR / FIND A DIRECTION</span></footer>
+    </main>
+  );
+}
