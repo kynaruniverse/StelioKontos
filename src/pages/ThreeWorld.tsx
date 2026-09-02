@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import * as THREE from "three";
+import * as THREE from "three/webgpu";
+import { Timer } from "three/examples/jsm/misc/Timer.js";
 
 const WORLD_SIZE = 54;
 const MAX_SPEED = 10;
@@ -120,14 +121,22 @@ export default function ThreeWorld() {
     const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 150);
     camera.position.set(0, 9, 15);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
-    mount.appendChild(renderer.domElement);
+
+    let isInitialized = false;
+
+    // WebGPURenderer initialization is asynchronous
+    renderer.init().then(() => {
+      isInitialized = true;
+      mount.appendChild(renderer.domElement);
+      animate();
+    });
+
 
     const ambient = new THREE.HemisphereLight(0xd9e5ff, 0x10111d, 2.4);
     scene.add(ambient);
@@ -213,7 +222,7 @@ export default function ThreeWorld() {
 
     const controls: ControlState = { forward: false, backward: false, left: false, right: false };
     const velocity = new THREE.Vector3();
-    const clock = new THREE.Clock();
+    const timer = new Timer();
     const targetCamera = new THREE.Vector3();
     const keys: Record<string, keyof ControlState> = { ArrowUp: "forward", w: "forward", ArrowDown: "backward", s: "backward", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" };
     const keyDown = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = true; event.preventDefault(); } };
@@ -239,8 +248,10 @@ export default function ThreeWorld() {
       setActiveLandmark((current) => current === next ? current : next);
     };
 
-    const animate = () => {
-      const delta = Math.min(clock.getDelta(), 0.04);
+    const animate = (timestamp?: number) => {
+      if (!isInitialized) return;
+      timer.update(timestamp);
+      const delta = Math.min(timer.getDelta(), 0.04);
       const input = new THREE.Vector3((controls.right ? 1 : 0) - (controls.left ? 1 : 0), 0, (controls.backward ? 1 : 0) - (controls.forward ? 1 : 0));
       if (input.lengthSq() > 0) {
         input.normalize();
@@ -273,7 +284,6 @@ export default function ThreeWorld() {
         if (child instanceof THREE.Group) child.children.forEach((nested) => { if (nested instanceof THREE.Mesh && nested.geometry instanceof THREE.OctahedronGeometry) nested.rotation.y += delta * 2; });
       });
     };
-    animate();
 
     return () => {
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
@@ -281,7 +291,9 @@ export default function ThreeWorld() {
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("resize", resize);
       renderer.dispose();
-      mount.removeChild(renderer.domElement);
+      if (mount.contains(renderer.domElement)) {
+        mount.removeChild(renderer.domElement);
+      }
     };
   }, []);
 
