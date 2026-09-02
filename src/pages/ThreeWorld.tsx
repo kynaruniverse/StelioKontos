@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
-import { Clock } from "three";
 
 const WORLD_SIZE = 54;
 const MAX_SPEED = 10;
@@ -109,6 +108,8 @@ export default function ThreeWorld() {
   const frameRef = useRef<number | null>(null);
   const [started, setStarted] = useState(false);
   const [activeLandmark, setActiveLandmark] = useState("THE START LINE");
+  
+  let elapsedTime = 0;
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -121,21 +122,29 @@ export default function ThreeWorld() {
     const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 150);
     camera.position.set(0, 9, 15);
 
-    const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    let renderer: THREE.WebGPURenderer | THREE.WebGLRenderer;
+    const initRenderer = (r: THREE.WebGPURenderer | THREE.WebGLRenderer) => {
+      r.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+      r.shadowMap.enabled = true;
+      r.shadowMap.type = THREE.PCFShadowMap;
+      r.toneMapping = THREE.ACESFilmicToneMapping;
+      r.toneMappingExposure = 1.1;
+      mount.appendChild(r.domElement);
+      r.setAnimationLoop(animate);
+    };
 
-    let isInitialized = false;
-
-    // WebGPURenderer initialization is asynchronous
-    renderer.init().then(() => {
-      isInitialized = true;
-      mount.appendChild(renderer.domElement);
-      animate();
-    });
+    try {
+      renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: false });
+      (renderer as THREE.WebGPURenderer).init()
+        .then(() => initRenderer(renderer))
+        .catch(() => {
+          renderer = new THREE.WebGLRenderer({ antialias: true });
+          initRenderer(renderer);
+        });
+    } catch (error) {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      initRenderer(renderer);
+    }
 
 
     const ambient = new THREE.HemisphereLight(0xd9e5ff, 0x10111d, 2.4);
@@ -225,7 +234,14 @@ export default function ThreeWorld() {
     const timer = new THREE.Timer();
     const targetCamera = new THREE.Vector3();
     const keys: Record<string, keyof ControlState> = { ArrowUp: "forward", w: "forward", ArrowDown: "backward", s: "backward", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" };
-    const keyDown = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = true; event.preventDefault(); } };
+    const keyDown = (event: KeyboardEvent) => {
+      setStarted(true); // dismiss intro on any key press
+      const key = keys[event.key];
+      if (key) {
+        controls[key] = true;
+        event.preventDefault();
+      }
+    };
     const keyUp = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = false; event.preventDefault(); } };
     window.addEventListener("keydown", keyDown);
     window.addEventListener("keyup", keyUp);
@@ -249,11 +265,12 @@ export default function ThreeWorld() {
     };
 
     const animate = (timestamp?: number) => {
-      if (!isInitialized) return;
       timer.update(timestamp);
       const delta = Math.min(timer.getDelta(), 0.04);
+      elapsedTime += delta;
       const input = new THREE.Vector3((controls.right ? 1 : 0) - (controls.left ? 1 : 0), 0, (controls.backward ? 1 : 0) - (controls.forward ? 1 : 0));
       if (input.lengthSq() > 0) {
+        car.position.y = 0;
         input.normalize();
         velocity.x = THREE.MathUtils.damp(velocity.x, input.x * MAX_SPEED, ACCELERATION, delta);
         velocity.z = THREE.MathUtils.damp(velocity.z, input.z * MAX_SPEED, ACCELERATION, delta);
@@ -261,6 +278,8 @@ export default function ThreeWorld() {
       } else {
         velocity.x = THREE.MathUtils.damp(velocity.x, 0, FRICTION, delta);
         velocity.z = THREE.MathUtils.damp(velocity.z, 0, FRICTION, delta);
+        // Gentle idle bob
+        car.position.y = Math.sin(elapsedTime * 2) * 0.05;
       }
       const previousPosition = car.position.clone();
       car.position.addScaledVector(velocity, delta);
@@ -272,9 +291,10 @@ export default function ThreeWorld() {
       }
       body.rotation.z = THREE.MathUtils.damp(body.rotation.z, -velocity.x * 0.035, 8, delta);
       beaconPulse(world, delta);
-      targetCamera.set(car.position.x, 7.5, car.position.z + 12);
+      const lookAhead = new THREE.Vector3(velocity.x * 0.5, 0, velocity.z * 0.5);
+      targetCamera.set(car.position.x + lookAhead.x, 7.5, car.position.z + 12 + lookAhead.z);
       camera.position.lerp(targetCamera, 1 - Math.pow(0.001, delta));
-      camera.lookAt(car.position.x, 0.8, car.position.z - 2);
+      camera.lookAt(car.position.x + lookAhead.x, 0.8, car.position.z - 2 + lookAhead.z);
       checkLandmarks();
       renderer.render(scene, camera);
       frameRef.current = requestAnimationFrame(animate);
@@ -287,9 +307,24 @@ export default function ThreeWorld() {
 
     return () => {
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (renderer) renderer.setAnimationLoop(null);
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("resize", resize);
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach((mat) => mat.dispose());
+          } else {
+            obj.material.dispose();
+          }
+        }
+        if (obj instanceof THREE.Sprite) {
+          obj.material.map?.dispose();
+          obj.material.dispose();
+        }
+      });
       renderer.dispose();
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);

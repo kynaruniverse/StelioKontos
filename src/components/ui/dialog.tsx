@@ -31,6 +31,13 @@ function Dialog({
       isComposing: () => composingRef.current,
       setComposing: (composing: boolean) => {
         composingRef.current = composing;
+        if (composing) {
+          if (endTimerRef.current) {
+            clearTimeout(endTimerRef.current);
+            endTimerRef.current = null;
+          }
+          justEndedRef.current = false;
+        }
       },
       justEndedComposing: () => justEndedRef.current,
       markCompositionEnd: () => {
@@ -104,7 +111,8 @@ function DialogContent({
     (e: KeyboardEvent) => {
       // Check both the native isComposing property and our context state
       // This handles Safari's timing issues with composition events
-      const isCurrentlyComposing = (e as any).isComposing || isComposing();
+      const nativeEvent = e as KeyboardEvent & { isComposing?: boolean };
+      const isCurrentlyComposing = nativeEvent.isComposing === true || isComposing();
 
       // If IME is composing, prevent dialog from closing
       if (isCurrentlyComposing) {

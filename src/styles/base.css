@@ -1,0 +1,57 @@
+/* SIDEQUEST / POCKET ARCADE — warm paper, signal colour, and retro-web poster modernism. */
+@import "tailwindcss";
+@import "tw-animate-css";
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-primary: var(--red);
+  --color-primary-foreground: var(--paper);
+  --font-display: "DM Serif Display", Georgia, serif;
+  --font-sans: "Space Grotesk", Arial, sans-serif;
+}
+
+:root {
+  --paper: #f3ebd8;
+  --paper-deep: #e9ddc4;
+  --ink: #1b1b1b;
+  --ink-soft: #4e514f;
+  --red: #f34a35;
+  --blue: #3152c9;
+  --yellow: #f5d34f;
+  --moss: #8c9c58;
+  --line: rgba(27, 27, 27, .2);
+  --ease-out: cubic-bezier(.23, 1, .32, 1);
+  --ease-spring: cubic-bezier(.2, .9, .25, 1.3);
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --primary: var(--red);
+  --primary-foreground: var(--paper);
+  --border: var(--line);
+  --night: #111327;
+  --midnight: #1c2145;
+  --coral: #f25d4d;
+  --green: #6eaa79;
+  --paper-light: #f5edd9;
+  --paper-rgb: 243, 235, 216;
+  --paper-light-rgb: 245, 237, 217;
+  --night-rgb: 17, 19, 39;
+  --night-deep-rgb: 12, 13, 27;
+  --yellow-rgb: 245, 211, 79;
+  --ink-rgb: 27, 27, 27;
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: "Space Grotesk", Arial, sans-serif; overflow-x: hidden; }
+  button, a { font: inherit; }
+  button { color: inherit; }
+  :where(button, a, [role="button"], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid var(--red);
+    outline-offset: 4px;
+  }
+}

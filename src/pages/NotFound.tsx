@@ -1,6 +1,4 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle, Home } from "lucide-react";
+import { Home, AlertTriangle } from "lucide-react";
 import { useLocation } from "wouter";
 
 export default function NotFound() {
@@ -11,39 +9,122 @@ export default function NotFound() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-      <Card className="w-full max-w-lg mx-4 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-        <CardContent className="pt-8 pb-8 text-center">
-          <div className="flex justify-center mb-6">
-            <div className="relative">
-              <div className="absolute inset-0 bg-red-100 rounded-full animate-pulse" />
-              <AlertCircle className="relative h-16 w-16 text-red-500" />
-            </div>
-          </div>
+    <div className="not-found-shell">
+      <div className="not-found-card">
+        <div className="not-found-icon">
+          <AlertTriangle size={40} strokeWidth={2.5} />
+        </div>
+        <p className="hero-kicker" style={{ justifyContent: "center", marginBottom: "12px" }}>
+          <span className="status-dot status-dot-red" />
+          ERROR / 404
+        </p>
+        <h1 className="not-found-title">
+          You wandered<br />
+          <i>off the map.</i>
+        </h1>
+        <p className="not-found-copy">
+          The page you’re looking for doesn’t exist, or it took a side
+          quest of its own. Let’s get you back to familiar ground.
+        </p>
+        <button className="sq-button sq-button-red" onClick={handleGoHome}>
+          <Home size={16} />
+          Return home
+        </button>
+      </div>
 
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">404</h1>
+      <style>{`
+        .not-found-shell {
+          min-height: 100svh;
+          display: grid;
+          place-items: center;
+          padding: 24px;
+          background: var(--night);
+          color: var(--paper);
+          font-family: "Space Grotesk", Arial, sans-serif;
+          overflow: hidden;
+          position: relative;
+        }
 
-          <h2 className="text-xl font-semibold text-slate-700 mb-4">
-            Page Not Found
-          </h2>
+        .not-found-shell::before {
+          content: "";
+          position: absolute;
+          width: 600px;
+          height: 600px;
+          border: 2px dashed rgba(var(--paper-light-rgb), 0.15);
+          border-radius: 50%;
+          transform: rotate(25deg);
+          pointer-events: none;
+        }
 
-          <p className="text-slate-600 mb-8 leading-relaxed">
-            Sorry, the page you are looking for doesn't exist.
-            <br />
-            It may have been moved or deleted.
-          </p>
+        .not-found-card {
+          position: relative;
+          z-index: 1;
+          max-width: 480px;
+          width: 100%;
+          padding: 44px 32px;
+          text-align: center;
+          border: 1px solid var(--paper);
+          background: rgba(var(--ink-rgb), 0.8);
+          box-shadow: 10px 10px 0 var(--coral);
+          backdrop-filter: blur(10px);
+          transform: rotate(-1.5deg);
+        }
 
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button
-              onClick={handleGoHome}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
-            >
-              <Home className="w-4 h-4 mr-2" />
-              Go Home
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        .not-found-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 80px;
+          height: 80px;
+          margin-bottom: 24px;
+          background: var(--yellow);
+          color: var(--ink);
+          border: 1px solid var(--ink);
+          box-shadow: 5px 5px 0 var(--coral);
+          transform: rotate(-6deg);
+        }
+
+        .not-found-title {
+          margin: 0 0 18px;
+          font-family: "DM Serif Display", Georgia, serif;
+          font-size: clamp(48px, 9vw, 76px);
+          font-weight: 400;
+          line-height: 0.9;
+          letter-spacing: -0.06em;
+          color: var(--paper);
+        }
+
+        .not-found-title i {
+          color: var(--coral);
+          font-style: italic;
+        }
+
+        .not-found-copy {
+          max-width: 340px;
+          margin: 0 auto 32px;
+          color: rgba(var(--paper-light-rgb), 0.7);
+          font-size: 13px;
+          line-height: 1.7;
+        }
+
+        .sq-button-red {
+          background: var(--coral);
+          color: var(--ink);
+          box-shadow: 5px 5px 0 var(--yellow);
+        }
+
+        .sq-button-red:hover {
+          background: var(--blue);
+          color: var(--paper);
+          box-shadow: 2px 2px 0 var(--yellow);
+          transform: translate(2px, 2px);
+        }
+
+        .sq-button-red:active {
+          transform: translate(5px, 5px);
+          box-shadow: 0 0 0 var(--yellow);
+        }
+      `}</style>
     </div>
   );
 }
