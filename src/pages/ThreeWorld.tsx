@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
-import { Timer } from "three/addons/misc/Timer.js";
+import { Timer } from "three/examples/jsm/misc/Timer.js";
 
 const WORLD_SIZE = 54;
 const MAX_SPEED = 10;
