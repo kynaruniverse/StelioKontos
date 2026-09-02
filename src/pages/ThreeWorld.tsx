@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
-import { Timer } from "three/addons/misc/Timer.js";
+import { Clock } from "three";
 
 const WORLD_SIZE = 54;
 const MAX_SPEED = 10;
@@ -222,7 +222,7 @@ export default function ThreeWorld() {
 
     const controls: ControlState = { forward: false, backward: false, left: false, right: false };
     const velocity = new THREE.Vector3();
-    const timer = new Timer();
+    const clock = new Clock();
     const targetCamera = new THREE.Vector3();
     const keys: Record<string, keyof ControlState> = { ArrowUp: "forward", w: "forward", ArrowDown: "backward", s: "backward", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" };
     const keyDown = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = true; event.preventDefault(); } };
@@ -250,8 +250,7 @@ export default function ThreeWorld() {
 
     const animate = (timestamp?: number) => {
       if (!isInitialized) return;
-      timer.update(timestamp);
-      const delta = Math.min(timer.getDelta(), 0.04);
+      const delta = Math.min(clock.getDelta(), 0.04);
       const input = new THREE.Vector3((controls.right ? 1 : 0) - (controls.left ? 1 : 0), 0, (controls.backward ? 1 : 0) - (controls.forward ? 1 : 0));
       if (input.lengthSq() > 0) {
         input.normalize();
