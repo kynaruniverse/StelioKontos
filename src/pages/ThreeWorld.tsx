@@ -222,7 +222,7 @@ export default function ThreeWorld() {
 
     const controls: ControlState = { forward: false, backward: false, left: false, right: false };
     const velocity = new THREE.Vector3();
-    const clock = new Clock();
+    const timer = new THREE.Timer();
     const targetCamera = new THREE.Vector3();
     const keys: Record<string, keyof ControlState> = { ArrowUp: "forward", w: "forward", ArrowDown: "backward", s: "backward", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" };
     const keyDown = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = true; event.preventDefault(); } };
@@ -250,7 +250,8 @@ export default function ThreeWorld() {
 
     const animate = (timestamp?: number) => {
       if (!isInitialized) return;
-      const delta = Math.min(clock.getDelta(), 0.04);
+      timer.update(timestamp);
+      const delta = Math.min(timer.getDelta(), 0.04);
       const input = new THREE.Vector3((controls.right ? 1 : 0) - (controls.left ? 1 : 0), 0, (controls.backward ? 1 : 0) - (controls.forward ? 1 : 0));
       if (input.lengthSq() > 0) {
         input.normalize();
