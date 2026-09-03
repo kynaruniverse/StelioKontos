@@ -169,7 +169,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     let loadedHand: THREE.Group | null = null;
     let handMixer: THREE.AnimationMixer | null = null;
     let handAnimations: THREE.AnimationClip[] = [];
-    let currentAnimationAction: THREE.AnimationAction | null = null;
+    let grabHoldAction: THREE.AnimationAction | null = null;
+    let grabReleaseAction: THREE.AnimationAction | null = null;
 
     // Fallback procedural hand
     const createProceduralHand = () => {
@@ -271,11 +272,26 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         loadedHand.position.sub(center);
         loadedHand.position.y += 0;
 
-        // Store animations
+        // Store animations and set up actions
         handAnimations = gltf.animations || [];
         if (handAnimations.length > 0) {
           handMixer = new THREE.AnimationMixer(loadedHand);
-          console.log(`Found ${handAnimations.length} animations`);
+  
+          // Find and store the animation actions
+          handAnimations.forEach((clip) => {
+            if (clip.name === "GrabHold") {
+              grabHoldAction = handMixer!.clipAction(clip);
+              grabHoldAction.setLoop(THREE.LoopOnce, 1);
+              grabHoldAction.clampWhenFinished = true;
+              console.log("GrabHold animation ready");
+            }
+            if (clip.name === "GrabRelease") {
+              grabReleaseAction = handMixer!.clipAction(clip);
+              grabReleaseAction.setLoop(THREE.LoopOnce, 1);
+              grabReleaseAction.clampWhenFinished = true;
+              console.log("GrabRelease animation ready");
+            }
+          });
         }
 
         scene.add(loadedHand);
@@ -376,10 +392,11 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             break;
 
           case PHASE_CLOSE_FIST:
-            // Close into fist
-            const closeProgress = (splashElapsed - 5000) / 2000;
-            fistClosure = easeInOutCubic(closeProgress);
-            applyFistClosure(fistClosure);
+            // Play GrabHold animation to close fist
+            if (grabHoldAction && !grabHoldAction.isRunning()) {
+              grabHoldAction.reset();
+              grabHoldAction.play();
+            }
             loadedHand.rotation.y = 0;
             loadedHand.rotation.x = -0.2;
             loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
@@ -388,9 +405,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             break;
 
           case PHASE_FIST_HOLD:
-            // Hold fist
-            fistClosure = 1;
-            applyFistClosure(1);
+          // Hold fist (animation already clamped)
             loadedHand.rotation.y = 0;
             loadedHand.rotation.x = -0.2;
             loadedHand.position.y = Math.sin(elapsed * 1.2) * 0.05;
@@ -406,9 +421,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             loadedHand.scale.setScalar(3 + bumpEased * 1.5);
             loadedHand.rotation.x = -0.2 + bumpEased * 0.5;
             loadedHand.rotation.y = 0;
-            fistClosure = 1;
-            applyFistClosure(1);
-            
+  
             if (bumpProgress > 0.6) {
               const impactIntensity = (bumpProgress - 0.6) / 0.4;
               hologramMaterial.uniforms.glowColor.value.setHSL(
@@ -427,8 +440,6 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             loadedHand.scale.setScalar(4.5);
             loadedHand.rotation.x = 0.3;
             loadedHand.rotation.y = 0;
-            fistClosure = 1;
-            applyFistClosure(1);
             hologramMaterial.uniforms.glowColor.value.setHSL(0.5, 1, 0.3);
             break;
         }
@@ -453,44 +464,6 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       camera.lookAt(0, 0, 0);
 
       renderer.render(scene, camera);
-    };
-
-    // Apply fist closure to bones
-    const applyFistClosure = (amount: number) => {
-      if (!loadedHand) return;
-    
-      loadedHand.traverse((child) => {
-        if (child instanceof THREE.Bone) {
-          const name = child.name;
-          
-          // Index finger
-          if (name === "Finger_Index1_04" || name === "Finger_Index2_05" || name === "Finger_Index3_06") {
-            child.rotation.z = amount * 0.8;
-            child.rotation.x = amount * 0.3;
-          }
-          // Middle finger
-          else if (name === "Finger_Middle1_08" || name === "Finger_Middle2_09" || name === "Finger_Middle3_010") {
-            child.rotation.z = amount * 0.9;
-            child.rotation.x = amount * 0.3;
-          }
-          // Ring finger
-          else if (name === "Finger_Ring1_012" || name === "Finger_Ring2_013" || name === "Finger_Ring3_014") {
-            child.rotation.z = amount * 0.85;
-            child.rotation.x = amount * 0.3;
-          }
-          // Pinky finger
-          else if (name === "Finger_Pinky1_016" || name === "Finger_Pinky2_017" || name === "Finger_Pinky3_018") {
-            child.rotation.z = amount * 0.75;
-            child.rotation.x = amount * 0.3;
-          }
-          // Thumb
-          else if (name === "Finger_Thumb1_020" || name === "Finger_Thumb2_021" || name === "Finger_Thumb3_022") {
-            child.rotation.x = amount * 0.7;
-            child.rotation.z = -amount * 0.5;
-            child.rotation.y = amount * 0.3;
-          }
-        }
-      });
     };
 
     // Easing functions
