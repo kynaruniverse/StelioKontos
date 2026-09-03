@@ -218,23 +218,36 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       (gltf) => {
         loadedHand = gltf.scene;
 
-        // DEBUG: Log all nodes and their names
-        console.log("=== ALL NODES IN MODEL ===");
+        // DEBUG: Log all nodes as a single string
+        let nodeLog = "=== ALL NODES IN MODEL ===\n";
         loadedHand.traverse((child) => {
-          console.log(`Type: ${child.type}, Name: "${child.name}"`);
+          nodeLog += `Type: ${child.type}, Name: "${child.name}"\n`;
         });
-        console.log("=== END NODES ===");
+        nodeLog += "=== END NODES ===\n";
+        console.log(nodeLog);
 
-        // Log animations
+        // Log animations as a single string for easy copying
         if (gltf.animations && gltf.animations.length > 0) {
-          console.log(`\n=== ANIMATIONS (${gltf.animations.length}) ===`);
+          let animLog = `\n=== ANIMATIONS (${gltf.animations.length}) ===\n`;
           gltf.animations.forEach((anim, i) => {
-            console.log(`Animation ${i}: "${anim.name}" - Duration: ${anim.duration}s`);
+            animLog += `Animation ${i}: "${anim.name}" - Duration: ${anim.duration}s\n`;
             anim.tracks.forEach((track) => {
-              console.log(`  Track: ${track.name}`);
+              animLog += `  Track: ${track.name}\n`;
             });
           });
-          console.log("=== END ANIMATIONS ===\n");
+          animLog += "=== END ANIMATIONS ===\n";
+          
+          // Output as a single console log
+          console.log(animLog);
+          
+          // Also copy to clipboard automatically
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(animLog).then(() => {
+              console.log("%c✅ Animation list copied to clipboard!", "color: #00ffcc; font-weight: bold;");
+            }).catch(() => {
+              console.log("%c⚠️ Could not auto-copy. Please manually copy the text above.", "color: #ffcc00;");
+            });
+          }
         } else {
           console.log("No animations found in this model");
         }
@@ -445,22 +458,36 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     // Apply fist closure to bones
     const applyFistClosure = (amount: number) => {
       if (!loadedHand) return;
-
+    
       loadedHand.traverse((child) => {
         if (child instanceof THREE.Bone) {
-          const name = child.name.toLowerCase();
-          if (
-            name.includes("finger") || name.includes("thumb") || 
-            name.includes("index") || name.includes("middle") || 
-            name.includes("ring") || name.includes("pinky")
-          ) {
-            if (name.includes("thumb")) {
-              child.rotation.x = amount * 0.8;
-              child.rotation.z = -amount * 0.6;
-            } else {
-              child.rotation.z = amount * 1.2;
-              child.rotation.x = amount * 0.4;
-            }
+          const name = child.name;
+          
+          // Index finger
+          if (name === "Finger_Index1_04" || name === "Finger_Index2_05" || name === "Finger_Index3_06") {
+            child.rotation.z = amount * 0.8;
+            child.rotation.x = amount * 0.3;
+          }
+          // Middle finger
+          else if (name === "Finger_Middle1_08" || name === "Finger_Middle2_09" || name === "Finger_Middle3_010") {
+            child.rotation.z = amount * 0.9;
+            child.rotation.x = amount * 0.3;
+          }
+          // Ring finger
+          else if (name === "Finger_Ring1_012" || name === "Finger_Ring2_013" || name === "Finger_Ring3_014") {
+            child.rotation.z = amount * 0.85;
+            child.rotation.x = amount * 0.3;
+          }
+          // Pinky finger
+          else if (name === "Finger_Pinky1_016" || name === "Finger_Pinky2_017" || name === "Finger_Pinky3_018") {
+            child.rotation.z = amount * 0.75;
+            child.rotation.x = amount * 0.3;
+          }
+          // Thumb
+          else if (name === "Finger_Thumb1_020" || name === "Finger_Thumb2_021" || name === "Finger_Thumb3_022") {
+            child.rotation.x = amount * 0.7;
+            child.rotation.z = -amount * 0.5;
+            child.rotation.y = amount * 0.3;
           }
         }
       });
