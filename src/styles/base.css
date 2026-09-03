@@ -1,7 +1,8 @@
-/* SIDEQUEST / POCKET ARCADE — warm paper, signal colour, and retro-web poster modernism. */
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
+
+/* SIDEQUEST / POCKET ARCADE — warm paper, signal colour, and retro-web poster modernism. */
 
 @custom-variant dark (&:is(.dark *));
 
