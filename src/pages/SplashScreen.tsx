@@ -32,17 +32,22 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     mount.appendChild(renderer.domElement);
 
-    // --- Hologram Shader Material ---
+    // --- Hologram Shader Material (with skinning support) ---
     const vertexShader = `
       varying vec3 vNormal;
       varying vec3 vViewPosition;
       varying vec3 vWorldPosition;
 
+      #include <skinning_pars_vertex>
+
       void main() {
+        #include <skinbase_vertex>
+        #include <skinning_vertex>
+
         vNormal = normalize(normalMatrix * normal);
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
         vViewPosition = -mvPosition.xyz;
-        vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+        vWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
         gl_Position = projectionMatrix * mvPosition;
       }
     `;
@@ -77,6 +82,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
       depthWrite: false,
+      skinning: true, // Enable skinning for the rigged hand
     });
 
     // --- Stars background ---
@@ -168,92 +174,14 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     const loader = new GLTFLoader();
     let loadedHand: THREE.Group | null = null;
     let handMixer: THREE.AnimationMixer | null = null;
-    let handAnimations: THREE.AnimationClip[] = [];
     let grabHoldAction: THREE.AnimationAction | null = null;
-    let grabReleaseAction: THREE.AnimationAction | null = null;
-
-    // Fallback procedural hand
-    const createProceduralHand = () => {
-      const handGroup = new THREE.Group();
-
-      const palm = new THREE.Mesh(
-        new THREE.SphereGeometry(1.2, 20, 14),
-        hologramMaterial
-      );
-      palm.scale.set(1.1, 1.3, 0.6);
-      palm.position.set(0, -0.5, 0);
-      handGroup.add(palm);
-
-      const fingerData = [
-        { x: -0.8, y: 0.3, len: 1.8, rad: 0.22 },
-        { x: -0.25, y: 0.5, len: 2.0, rad: 0.24 },
-        { x: 0.3, y: 0.4, len: 1.8, rad: 0.22 },
-        { x: 0.75, y: 0.2, len: 1.4, rad: 0.2 },
-      ];
-
-      fingerData.forEach((finger) => {
-        const mesh = new THREE.Mesh(
-          new THREE.CylinderGeometry(finger.rad, finger.rad, finger.len, 12),
-          hologramMaterial
-        );
-        mesh.position.set(finger.x, finger.y + finger.len / 2, 0);
-        handGroup.add(mesh);
-      });
-
-      const thumb = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.2, 0.2, 1.2, 12),
-        hologramMaterial
-      );
-      thumb.position.set(-1.3, -0.3, 0.2);
-      thumb.rotation.z = -0.8;
-      handGroup.add(thumb);
-
-      handGroup.position.y = 0;
-      scene.add(handGroup);
-      loadedHand = handGroup;
-      console.log("Using procedural hand fallback");
-    };
 
     loader.load(
       "/Hand.glb",
       (gltf) => {
         loadedHand = gltf.scene;
 
-        // DEBUG: Log all nodes as a single string
-        let nodeLog = "=== ALL NODES IN MODEL ===\n";
-        loadedHand.traverse((child) => {
-          nodeLog += `Type: ${child.type}, Name: "${child.name}"\n`;
-        });
-        nodeLog += "=== END NODES ===\n";
-        console.log(nodeLog);
-
-        // Log animations as a single string for easy copying
-        if (gltf.animations && gltf.animations.length > 0) {
-          let animLog = `\n=== ANIMATIONS (${gltf.animations.length}) ===\n`;
-          gltf.animations.forEach((anim, i) => {
-            animLog += `Animation ${i}: "${anim.name}" - Duration: ${anim.duration}s\n`;
-            anim.tracks.forEach((track) => {
-              animLog += `  Track: ${track.name}\n`;
-            });
-          });
-          animLog += "=== END ANIMATIONS ===\n";
-          
-          // Output as a single console log
-          console.log(animLog);
-          
-          // Also copy to clipboard automatically
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(animLog).then(() => {
-              console.log("%c✅ Animation list copied to clipboard!", "color: #00ffcc; font-weight: bold;");
-            }).catch(() => {
-              console.log("%c⚠️ Could not auto-copy. Please manually copy the text above.", "color: #ffcc00;");
-            });
-          }
-        } else {
-          console.log("No animations found in this model");
-        }
-
-        // Apply hologram material
+        // Apply hologram material to all meshes
         loadedHand.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             child.material = hologramMaterial;
@@ -272,24 +200,15 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         loadedHand.position.sub(center);
         loadedHand.position.y += 0;
 
-        // Store animations and set up actions
-        handAnimations = gltf.animations || [];
-        if (handAnimations.length > 0) {
+        // Set up animation mixer
+        if (gltf.animations && gltf.animations.length > 0) {
           handMixer = new THREE.AnimationMixer(loadedHand);
-  
-          // Find and store the animation actions
-          handAnimations.forEach((clip) => {
+          
+          gltf.animations.forEach((clip) => {
             if (clip.name === "GrabHold") {
               grabHoldAction = handMixer!.clipAction(clip);
               grabHoldAction.setLoop(THREE.LoopOnce, 1);
               grabHoldAction.clampWhenFinished = true;
-              console.log("GrabHold animation ready");
-            }
-            if (clip.name === "GrabRelease") {
-              grabReleaseAction = handMixer!.clipAction(clip);
-              grabReleaseAction.setLoop(THREE.LoopOnce, 1);
-              grabReleaseAction.clampWhenFinished = true;
-              console.log("GrabRelease animation ready");
             }
           });
         }
@@ -297,19 +216,14 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         scene.add(loadedHand);
         console.log("Hand model loaded successfully");
       },
-      (xhr) => {
-        console.log(
-          `Loading hand: ${((xhr.loaded / xhr.total) * 100).toFixed(0)}%`
-        );
-      },
+      undefined,
       (error) => {
         console.error("Error loading hand model:", error);
-        createProceduralHand();
       }
     );
 
     // --- Animation State Machine ---
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
     const startTime = performance.now();
     const totalSplashTime = 11000;
 
@@ -333,11 +247,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       }, 1000);
     };
 
-    // Track fist closure
-    let fistClosure = 0;
-
     const animate = () => {
-      const elapsed = clock.getElapsedTime();
+      const delta = timer.getDelta();
+      const elapsed = timer.getElapsedTime();
       const splashElapsed = performance.now() - startTime;
 
       if (splashElapsed >= totalSplashTime) {
@@ -360,16 +272,15 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       else if (splashElapsed < 9500) phase = PHASE_FIST_BUMP;
       else phase = PHASE_FADE_OUT;
 
+      // Update mixer
+      if (handMixer) {
+        handMixer.update(delta);
+      }
+
       // Animate loaded hand based on phase
       if (loadedHand) {
-        // Update mixer if available
-        if (handMixer) {
-          handMixer.update(clock.getDelta());
-        }
-
         switch (phase) {
-          case PHASE_RENDER:
-            // Materialize
+          case PHASE_RENDER: {
             const renderProgress = splashElapsed / 1500;
             const renderEased = easeOutBack(renderProgress);
             loadedHand.scale.setScalar(3 * renderEased);
@@ -377,22 +288,20 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             loadedHand.rotation.y = 0;
             loadedHand.position.z = 0;
             loadedHand.rotation.x = -0.2;
-            fistClosure = 0;
             break;
+          }
 
-          case PHASE_ROTATE:
-            // Full rotation showing all angles
+          case PHASE_ROTATE: {
             loadedHand.scale.setScalar(3);
             const rotateProgress = (splashElapsed - 1500) / 3500;
             loadedHand.rotation.y = rotateProgress * Math.PI * 2;
             loadedHand.rotation.x = -0.2 + Math.sin(rotateProgress * Math.PI * 2) * 0.4;
             loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.15;
             loadedHand.position.z = 0;
-            fistClosure = 0;
             break;
+          }
 
-          case PHASE_CLOSE_FIST:
-            // Play GrabHold animation to close fist
+          case PHASE_CLOSE_FIST: {
             if (grabHoldAction && !grabHoldAction.isRunning()) {
               grabHoldAction.reset();
               grabHoldAction.play();
@@ -403,18 +312,18 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             loadedHand.position.z = 0;
             loadedHand.scale.setScalar(3);
             break;
+          }
 
-          case PHASE_FIST_HOLD:
-          // Hold fist (animation already clamped)
+          case PHASE_FIST_HOLD: {
             loadedHand.rotation.y = 0;
             loadedHand.rotation.x = -0.2;
             loadedHand.position.y = Math.sin(elapsed * 1.2) * 0.05;
             loadedHand.position.z = 0;
             loadedHand.scale.setScalar(3);
             break;
+          }
 
-          case PHASE_FIST_BUMP:
-            // Fist bump toward screen
+          case PHASE_FIST_BUMP: {
             const bumpProgress = (splashElapsed - 7500) / 2000;
             const bumpEased = easeOutCubic(Math.min(bumpProgress, 1));
             loadedHand.position.z = bumpEased * 5;
@@ -433,15 +342,16 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
               camera.position.y = 1.5 + Math.cos(elapsed * 50) * impactIntensity * 0.1;
             }
             break;
+          }
 
-          case PHASE_FADE_OUT:
-            // Hold near camera
+          case PHASE_FADE_OUT: {
             loadedHand.position.z = 5;
             loadedHand.scale.setScalar(4.5);
             loadedHand.rotation.x = 0.3;
             loadedHand.rotation.y = 0;
             hologramMaterial.uniforms.glowColor.value.setHSL(0.5, 1, 0.3);
             break;
+          }
         }
       }
 
@@ -471,10 +381,6 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       const c1 = 1.70158;
       const c3 = c1 + 1;
       return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
-    }
-
-    function easeInOutCubic(t: number): number {
-      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     }
 
     function easeOutCubic(t: number): number {
