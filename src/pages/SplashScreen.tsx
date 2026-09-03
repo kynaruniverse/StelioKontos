@@ -224,6 +224,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
     // --- Animation State Machine ---
     const timer = new THREE.Timer();
+    let elapsedTime = 0;
     const startTime = performance.now();
     const totalSplashTime = 11000;
 
@@ -248,10 +249,12 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     };
 
     const animate = () => {
+      timer.update();
       const delta = timer.getDelta();
-      const elapsed = timer.getElapsedTime();
+      elapsedTime += delta;
+      const elapsed = elapsedTime;
       const splashElapsed = performance.now() - startTime;
-
+    
       if (splashElapsed >= totalSplashTime) {
         if (!completed) {
           completed = true;
