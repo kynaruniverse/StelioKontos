@@ -130,48 +130,64 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     lightBeam.position.y = -1.25;
     scene.add(lightBeam);
 
-    // --- Particle Assembly System ---
-    const particles: THREE.Mesh[] = [];
+    // --- Instanced Particle Assembly System ---
     const particleTargets: THREE.Vector3[] = [];
     const particleInitialPositions: THREE.Vector3[] = [];
     const particleInitialRotations: THREE.Euler[] = [];
     const particleCount = 800;
 
+    // One InstancedMesh replaces hundreds of individual Mesh objects.
+    // This reduces the particle phase to a single draw call.
     const particleGeometry = new THREE.BoxGeometry(0.08, 0.08, 0.08);
-    const particleMaterial = new THREE.MeshStandardMaterial({
+    const particleMaterial = new THREE.MeshBasicMaterial({
       color: 0x00ffcc,
-      emissive: 0x00ffcc,
-      emissiveIntensity: 1.0,
       transparent: true,
       opacity: 0.8,
-      roughness: 0.2,
-      metalness: 0.3,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
 
+    const particleMesh = new THREE.InstancedMesh(
+      particleGeometry,
+      particleMaterial,
+      particleCount
+    );
+    particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    particleMesh.frustumCulled = false;
+
+    const particleTransform = new THREE.Object3D();
+    const particleInitialScales: number[] = [];
+
     for (let i = 0; i < particleCount; i++) {
-      const mesh = new THREE.Mesh(particleGeometry, particleMaterial);
       const radius = 15;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
       const r = radius * Math.cbrt(Math.random());
-
-      mesh.position.set(
+      const position = new THREE.Vector3(
         r * Math.sin(phi) * Math.cos(theta),
         r * Math.sin(phi) * Math.sin(theta),
         r * Math.cos(phi)
       );
-      mesh.rotation.set(
+      const rotation = new THREE.Euler(
         Math.random() * Math.PI,
         Math.random() * Math.PI,
         Math.random() * Math.PI
       );
-      mesh.scale.setScalar(0.5 + Math.random() * 0.5);
+      const scale = 0.5 + Math.random() * 0.5;
 
-      particles.push(mesh);
-      particleInitialPositions.push(mesh.position.clone());
-      particleInitialRotations.push(mesh.rotation.clone());
-      scene.add(mesh);
+      particleInitialPositions.push(position);
+      particleInitialRotations.push(rotation);
+      particleInitialScales.push(scale);
+
+      particleTransform.position.copy(position);
+      particleTransform.rotation.copy(rotation);
+      particleTransform.scale.setScalar(scale);
+      particleTransform.updateMatrix();
+      particleMesh.setMatrixAt(i, particleTransform.matrix);
     }
+
+    particleMesh.instanceMatrix.needsUpdate = true;
+    scene.add(particleMesh);
 
     // --- Animation State ---
     const clock = new THREE.Clock();
@@ -193,6 +209,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     let grabHoldAction: THREE.AnimationAction | null = null;
     let activeHandAction: THREE.AnimationAction | null = null;
     const animationBlendDuration = 0.35;
+    // The source GLB is sideways. Apply one consistent 90-degree yaw so the
+    // palm faces the camera throughout every animation phase.
+    const handFacingOffset = Math.PI / 2;
 
     const switchHandAction = (
       nextAction: THREE.AnimationAction | null,
@@ -234,6 +253,12 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       }
     };
 
+    const setHandScale = (value: number) => {
+      if (loadedHand && loadedHand.scale.x !== value) {
+        loadedHand.scale.setScalar(value);
+      }
+    };
+
     const getPhase = (splashElapsed: number): number => {
       if (splashElapsed < 4000) return PHASE_PARTICLES;
       if (splashElapsed < 6000) return PHASE_ROTATE;
@@ -246,14 +271,12 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       if (handRevealed || !loadedHand) return;
 
       handRevealed = true;
-      particles.forEach((particle) => {
-        particle.visible = false;
-      });
+      particleMesh.visible = false;
 
       loadedHand.visible = true;
       loadedHand.scale.setScalar(3);
       loadedHand.position.set(0, 0, 0);
-      loadedHand.rotation.set(-0.2, 0, 0);
+      loadedHand.rotation.set(-0.2, handFacingOffset, 0);
     };
 
     // --- Load Hand Model (GLB) ---
@@ -272,9 +295,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           }
         });
 
-        loadedHand.scale.setScalar(3);
+        setHandScale(3);
         loadedHand.position.set(0, 0, 0);
-        loadedHand.rotation.set(0.3, Math.PI, 0);
+        loadedHand.rotation.set(0.3, Math.PI + handFacingOffset, 0);
         loadedHand.updateMatrixWorld(true);
 
         // Center after all initial transforms have been applied.
@@ -318,14 +341,27 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           const positionAttribute = child.geometry.getAttribute("position");
           if (!positionAttribute) return;
 
-          const step = Math.max(1, Math.floor(positionAttribute.count / 500));
-          for (let i = 0; i < positionAttribute.count; i += step) {
+          if (particleTargets.length >= particleCount) return;
+
+          const remaining = particleCount - particleTargets.length;
+          const sampleCount = Math.min(500, remaining);
+          const step = Math.max(
+            1,
+            Math.floor(positionAttribute.count / sampleCount)
+          );
+
+          for (
+            let i = 0;
+            i < positionAttribute.count &&
+            particleTargets.length < particleCount;
+            i += step
+          ) {
             const vertex = new THREE.Vector3().fromBufferAttribute(
               positionAttribute,
               i
             );
             child.localToWorld(vertex);
-            particleTargets.push(vertex.clone());
+            particleTargets.push(vertex);
           }
         });
 
@@ -375,22 +411,36 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       const particleProgress = Math.min(splashElapsed / 4000, 1);
       const particleEased = easeOutCubic(particleProgress);
 
-      // Assemble only the particles that have corresponding hand targets.
-      particles.forEach((particle, i) => {
-        if (i >= particleTargets.length || particleProgress >= 1) return;
+      // Update instance transforms only during the assembly phase.
+      // After this phase, the InstancedMesh is hidden and no particle matrices
+      // are modified, avoiding unnecessary GPU uploads.
+      if (phase === PHASE_PARTICLES && particleProgress < 1) {
+        const targetCount = Math.min(particleTargets.length, particleCount);
 
-        const target = particleTargets[i];
-        const initial = particleInitialPositions[i];
-        const initialRotation = particleInitialRotations[i];
+        for (let i = 0; i < targetCount; i++) {
+          const initial = particleInitialPositions[i];
+          const target = particleTargets[i];
+          const initialRotation = particleInitialRotations[i];
 
-        particle.position.lerpVectors(initial, target, particleEased);
-        particle.rotation.set(
-          initialRotation.x * (1 - particleEased),
-          initialRotation.y * (1 - particleEased),
-          initialRotation.z * (1 - particleEased)
-        );
-        particle.scale.setScalar(0.5 + particleEased * 0.5);
-      });
+          particleTransform.position.lerpVectors(
+            initial,
+            target,
+            particleEased
+          );
+          particleTransform.rotation.set(
+            initialRotation.x * (1 - particleEased),
+            initialRotation.y * (1 - particleEased),
+            initialRotation.z * (1 - particleEased)
+          );
+          particleTransform.scale.setScalar(
+            particleInitialScales[i] + particleEased * 0.5
+          );
+          particleTransform.updateMatrix();
+          particleMesh.setMatrixAt(i, particleTransform.matrix);
+        }
+
+        particleMesh.instanceMatrix.needsUpdate = true;
+      }
 
       // Reveal based on elapsed time, independently of when the GLB finishes.
       // This handles both fast and slow network/model loads.
@@ -408,20 +458,21 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         switch (phase) {
           case PHASE_ROTATE: {
             const rotateProgress = (splashElapsed - 4000) / 2000;
-            loadedHand.rotation.y = Math.PI + rotateProgress * Math.PI * 2;
+            loadedHand.rotation.y =
+              Math.PI + handFacingOffset + rotateProgress * Math.PI * 2;
             loadedHand.rotation.x =
               0.3 + Math.sin(rotateProgress * Math.PI * 2) * 0.4;
             loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.15;
-            loadedHand.scale.setScalar(3);
+            setHandScale(3);
             break;
           }
 
           case PHASE_CLOSE_FIST: {
-            loadedHand.rotation.y = Math.PI;
+            loadedHand.rotation.y = Math.PI + handFacingOffset;
             loadedHand.rotation.x = 0.3;
             loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
             loadedHand.position.z = 0;
-            loadedHand.scale.setScalar(3);
+            setHandScale(3);
 
             // Start the one-shot animation once on phase entry. The old code
             // restarted it every frame after LoopOnce had finished.
@@ -451,9 +502,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             const bumpEased = easeOutCubic(bumpProgress);
 
             loadedHand.position.z = bumpEased * 5;
-            loadedHand.scale.setScalar(3 + bumpEased * 1.5);
+            setHandScale(3 + bumpEased * 1.5);
             loadedHand.rotation.x = 0.3 + bumpEased * 0.5;
-            loadedHand.rotation.y = Math.PI;
+            loadedHand.rotation.y = Math.PI + handFacingOffset;
 
             if (bumpProgress > 0.6) {
               const impactIntensity = (bumpProgress - 0.6) / 0.4;
@@ -472,9 +523,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             }
 
             loadedHand.position.z = 5;
-            loadedHand.scale.setScalar(4.5);
+            setHandScale(4.5);
             loadedHand.rotation.x = 0.8;
-            loadedHand.rotation.y = Math.PI;
+            loadedHand.rotation.y = Math.PI + handFacingOffset;
             hologramMaterial.emissiveIntensity = 0.3;
             break;
           }
@@ -533,21 +584,27 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         mount.removeChild(renderer.domElement);
       }
 
+      const geometries = new Set<THREE.BufferGeometry>();
+      const materials = new Set<THREE.Material>();
+
       scene.traverse((obj) => {
         if (
           obj instanceof THREE.Mesh ||
           obj instanceof THREE.Points ||
           obj instanceof THREE.Line
         ) {
-          obj.geometry.dispose();
+          geometries.add(obj.geometry);
 
           if (Array.isArray(obj.material)) {
-            obj.material.forEach((material) => material.dispose());
+            obj.material.forEach((material) => materials.add(material));
           } else if (obj.material instanceof THREE.Material) {
-            obj.material.dispose();
+            materials.add(obj.material);
           }
         }
       });
+
+      geometries.forEach((geometry) => geometry.dispose());
+      materials.forEach((material) => material.dispose());
     };
   }, [onComplete]);
 
