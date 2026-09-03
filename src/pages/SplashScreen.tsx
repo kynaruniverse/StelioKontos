@@ -73,8 +73,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     // --- Prepare wordmark canvas but wait for fonts before sampling ---
     const text = "SIDEQUEST";
     const canvas = document.createElement("canvas");
-    canvas.width = 1024;
-    canvas.height = 256;
+    canvas.width = 1200;
+    canvas.height = 400;
     const ctx = canvas.getContext("2d")!;
 
     let animationFrame: number | null = null;
@@ -102,7 +102,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#fff";
-      ctx.font = "Bold 160px 'Space Grotesk', Arial, sans-serif";
+      ctx.font = "Bold 200px 'Space Grotesk', Arial, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(text, canvas.width / 2, canvas.height / 2);
@@ -114,8 +114,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         canvas.height
       ).data;
       const targetPositions: THREE.Vector3[] = [];
-      const samplingStep = 6;
-      const scale = 0.02;
+      const samplingStep = 4;
+      const scale = 0.015;
 
       for (let y = 0; y < canvas.height; y += samplingStep) {
         for (let x = 0; x < canvas.width; x += samplingStep) {

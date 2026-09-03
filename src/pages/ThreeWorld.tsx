@@ -107,8 +107,15 @@ export default function ThreeWorld() {
   const mountRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
   const [activeLandmark, setActiveLandmark] = useState("THE START LINE");
-  
+
   const elapsedTimeRef = useRef(0);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchControlsRef = useRef<ControlState>({
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+  });
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -246,6 +253,42 @@ export default function ThreeWorld() {
     window.addEventListener("keydown", keyDown);
     window.addEventListener("keyup", keyUp);
 
+    // Touch / drag controls for mobile
+    const handleTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) {
+        touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+      }
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      event.preventDefault();
+      const touch = event.touches[0];
+      if (!touch || !touchStartRef.current) return;
+    
+      const dx = touch.clientX - touchStartRef.current.x;
+      const dy = touch.clientY - touchStartRef.current.y;
+      const threshold = 20; // minimum drag distance to activate
+    
+      touchControlsRef.current.left = dx < -threshold;
+      touchControlsRef.current.right = dx > threshold;
+      touchControlsRef.current.forward = dy < -threshold;
+      touchControlsRef.current.backward = dy > threshold;
+    };
+
+    const handleTouchEnd = () => {
+      touchStartRef.current = null;
+      touchControlsRef.current = { forward: false, backward: false, left: false, right: false };
+    };
+
+    const shell = mount.closest(".three-world-shell") as HTMLElement | null;
+    if (shell) {
+      shell.addEventListener("touchstart", handleTouchStart, { passive: true });
+      shell.addEventListener("touchmove", handleTouchMove, { passive: false });
+      shell.addEventListener("touchend", handleTouchEnd);
+      shell.addEventListener("touchcancel", handleTouchEnd);
+    }
+
     const resize = () => {
       const width = mount.clientWidth;
       const height = mount.clientHeight;
@@ -268,7 +311,18 @@ export default function ThreeWorld() {
       timer.update(timestamp);
       const delta = Math.min(timer.getDelta(), 0.04);
       elapsedTimeRef.current += delta;
-      const input = new THREE.Vector3((controls.right ? 1 : 0) - (controls.left ? 1 : 0), 0, (controls.backward ? 1 : 0) - (controls.forward ? 1 : 0));
+      // Merge keyboard and touch controls
+      const mergedControls = {
+        forward: controls.forward || touchControlsRef.current.forward,
+        backward: controls.backward || touchControlsRef.current.backward,
+        left: controls.left || touchControlsRef.current.left,
+        right: controls.right || touchControlsRef.current.right,
+      };
+      const input = new THREE.Vector3(
+        (mergedControls.right ? 1 : 0) - (mergedControls.left ? 1 : 0),
+        0,
+        (mergedControls.backward ? 1 : 0) - (mergedControls.forward ? 1 : 0)
+      );
       if (input.lengthSq() > 0) {
         car.position.y = 0;
         input.normalize();
@@ -318,6 +372,12 @@ export default function ThreeWorld() {
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("resize", resize);
+      if (shell) {
+        shell.removeEventListener("touchstart", handleTouchStart);
+        shell.removeEventListener("touchmove", handleTouchMove);
+        shell.removeEventListener("touchend", handleTouchEnd);
+        shell.removeEventListener("touchcancel", handleTouchEnd);
+      }
       scene.traverse((obj) => {
         if (obj instanceof THREE.Mesh || obj instanceof THREE.Points || obj instanceof THREE.Line) {
           obj.geometry.dispose();
@@ -363,12 +423,6 @@ export default function ThreeWorld() {
         <p className="world-note">No download. No account. Just a browser and a direction.</p>
       </section>
       <aside className="world-legend" aria-label="World landmarks"><span>MAKE</span><span>WANDER</span><span>PLAY</span></aside>
-      <div className="world-controls" aria-label="Touch controls">
-        <button onPointerDown={() => press("left", true)} onPointerUp={() => press("left", false)} onPointerCancel={() => press("left", false)} aria-label="Turn left">←</button>
-        <button onPointerDown={() => press("forward", true)} onPointerUp={() => press("forward", false)} onPointerCancel={() => press("forward", false)} aria-label="Move forward">↑</button>
-        <button onPointerDown={() => press("backward", true)} onPointerUp={() => press("backward", false)} onPointerCancel={() => press("backward", false)} aria-label="Move backward">↓</button>
-        <button onPointerDown={() => press("right", true)} onPointerUp={() => press("right", false)} onPointerCancel={() => press("right", false)} aria-label="Turn right">→</button>
-      </div>
       <footer className="world-footer"><span>THREE.JS / WEBGL / SIDEQUEST FIELD NOTES</span><span>DRIVE TO A COLOUR / FIND A DIRECTION</span></footer>
     </main>
   );
