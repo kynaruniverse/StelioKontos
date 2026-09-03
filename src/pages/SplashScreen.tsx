@@ -195,75 +195,182 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     const totalSplashTime = 12000;
 
     const PHASE_PARTICLES = 0;
-    const PHASE_ROTATE = 1;
-    const PHASE_CLOSE_FIST = 2;
-    const PHASE_FIST_BUMP = 3;
-    const PHASE_FADE_OUT = 4;
+    const PHASE_CLOSE_FIST = 1;
+    const PHASE_TURN_FIST = 2;
+    const PHASE_EXTEND_THUMB = 3;
+    const PHASE_EXTEND_MIDDLE = 4;
+    const PHASE_FADE_OUT = 5;
 
     let completed = false;
     let fadeOutTimer: ReturnType<typeof setTimeout> | null = null;
     let handRevealed = false;
-    let closeFistStarted = false;
     let loadedHand: THREE.Group | null = null;
-    let handMixer: THREE.AnimationMixer | null = null;
-    let grabHoldAction: THREE.AnimationAction | null = null;
-    let activeHandAction: THREE.AnimationAction | null = null;
-    const animationBlendDuration = 0.35;
+
+    type ProceduralBone = {
+      bone: THREE.Bone;
+      open: THREE.Quaternion;
+      closed: THREE.Quaternion;
+    };
+
+    type HandRig = {
+      fingers: ProceduralBone[][];
+      thumb: ProceduralBone[];
+    };
+
+    let handRig: HandRig | null = null;
+    let fistAnimationProgress = 0;
+    let gestureProgress = 0;
+
     // The source GLB is sideways. Apply one consistent 90-degree yaw so the
-    // palm faces the camera throughout every animation phase.
+    // open palm initially faces the camera.
     const handFacingOffset = Math.PI / 2;
+    const handForwardYaw = handFacingOffset;
 
-    const switchHandAction = (
-      nextAction: THREE.AnimationAction | null,
-      options: {
-        loop?: THREE.AnimationActionLoopStyles;
-        repetitions?: number;
-        clampWhenFinished?: boolean;
-        restart?: boolean;
-      } = {}
+    const makeProceduralBone = (
+      bone: THREE.Bone,
+      curlRadians: number
+    ): ProceduralBone => {
+      const open = bone.quaternion.clone();
+      const curlRotation = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(curlRadians, 0, 0)
+      );
+      const closed = open.clone().multiply(curlRotation);
+
+      return { bone, open, closed };
+    };
+
+    const createHandRig = (hand: THREE.Group): HandRig => {
+      const findBone = (name: string): THREE.Bone => {
+        const object = hand.getObjectByName(name);
+        if (!(object instanceof THREE.Bone)) {
+          throw new Error(`Required hand bone not found: ${name}`);
+        }
+        return object;
+      };
+
+      const chain = (
+        names: string[],
+        curlRadians: number
+      ): ProceduralBone[] =>
+        names.map((name, index) =>
+          makeProceduralBone(
+            findBone(name),
+            curlRadians * (1 - index * 0.08)
+          )
+        );
+
+      return {
+        fingers: [
+          chain(
+            [
+              "Finger_Index1_04",
+              "Finger_Index2_05",
+              "Finger_Index3_06",
+            ],
+            1.05
+          ),
+          chain(
+            [
+              "Finger_Middle1_08",
+              "Finger_Middle2_09",
+              "Finger_Middle3_010",
+            ],
+            1.12
+          ),
+          chain(
+            [
+              "Finger_Ring1_012",
+              "Finger_Ring2_013",
+              "Finger_Ring3_014",
+            ],
+            1.18
+          ),
+          chain(
+            [
+              "Finger_Pinky1_016",
+              "Finger_Pinky2_017",
+              "Finger_Pinky3_018",
+            ],
+            1.24
+          ),
+        ],
+        thumb: [
+          makeProceduralBone(findBone("Finger_Thumb1_020"), -0.75),
+          makeProceduralBone(findBone("Finger_Thumb2_021"), -0.85),
+          makeProceduralBone(findBone("Finger_Thumb3_022"), -0.55),
+        ],
+      };
+    };
+
+    const applyHandPose = (
+      rig: HandRig,
+      fingerCurls: number[],
+      thumbCurl: number,
+      staggered = false
     ) => {
-      if (!nextAction) return;
+      rig.fingers.forEach((finger, fingerIndex) => {
+        const rawCurl = THREE.MathUtils.clamp(
+          fingerCurls[fingerIndex] ?? 0,
+          0,
+          1
+        );
+        const fingerCurl = staggered
+          ? THREE.MathUtils.clamp(
+              (rawCurl - fingerIndex * 0.045) /
+                (1 - fingerIndex * 0.045),
+              0,
+              1
+            )
+          : rawCurl;
 
-      const {
-        loop = THREE.LoopOnce,
-        repetitions = 1,
-        clampWhenFinished = true,
-        restart = false,
-      } = options;
+        finger.forEach((joint, jointIndex) => {
+          const jointProgress = THREE.MathUtils.clamp(
+            fingerCurl * (1.04 - jointIndex * 0.04),
+            0,
+            1
+          );
+          joint.bone.quaternion.slerpQuaternions(
+            joint.open,
+            joint.closed,
+            jointProgress
+          );
+        });
+      });
 
-      if (activeHandAction === nextAction && !restart) return;
-
-      if (activeHandAction && activeHandAction !== nextAction) {
-        activeHandAction.fadeOut(animationBlendDuration);
-      }
-
-      nextAction.setLoop(loop, repetitions);
-      nextAction.clampWhenFinished = clampWhenFinished;
-      nextAction.reset();
-      nextAction.setEffectiveWeight(1);
-      nextAction.fadeIn(animationBlendDuration);
-      nextAction.play();
-      activeHandAction = nextAction;
+      const clampedThumbCurl = THREE.MathUtils.clamp(thumbCurl, 0, 1);
+      rig.thumb.forEach((joint, jointIndex) => {
+        const jointProgress = THREE.MathUtils.clamp(
+          clampedThumbCurl * (1.05 - jointIndex * 0.08),
+          0,
+          1
+        );
+        joint.bone.quaternion.slerpQuaternions(
+          joint.open,
+          joint.closed,
+          jointProgress
+        );
+      });
     };
 
-    const stopHandAction = () => {
-      if (activeHandAction) {
-        activeHandAction.fadeOut(animationBlendDuration);
-        activeHandAction = null;
-      }
+    const applyProceduralFistPose = (
+      rig: HandRig,
+      progress: number
+    ) => {
+      const eased = easeInOutCubic(THREE.MathUtils.clamp(progress, 0, 1));
+      applyHandPose(rig, [eased, eased, eased, eased], eased, true);
     };
 
-    const setHandScale = (value: number) => {
-      if (loadedHand && loadedHand.scale.x !== value) {
-        loadedHand.scale.setScalar(value);
-      }
-    };
+    const easeInOutCubic = (value: number): number =>
+      value < 0.5
+        ? 4 * value * value * value
+        : 1 - Math.pow(-2 * value + 2, 3) / 2;
 
     const getPhase = (splashElapsed: number): number => {
       if (splashElapsed < 4000) return PHASE_PARTICLES;
-      if (splashElapsed < 6000) return PHASE_ROTATE;
-      if (splashElapsed < 8000) return PHASE_CLOSE_FIST;
-      if (splashElapsed < 10000) return PHASE_FIST_BUMP;
+      if (splashElapsed < 6000) return PHASE_CLOSE_FIST;
+      if (splashElapsed < 8000) return PHASE_TURN_FIST;
+      if (splashElapsed < 9000) return PHASE_EXTEND_THUMB;
+      if (splashElapsed < 10000) return PHASE_EXTEND_MIDDLE;
       return PHASE_FADE_OUT;
     };
 
@@ -276,7 +383,12 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       loadedHand.visible = true;
       loadedHand.scale.setScalar(3);
       loadedHand.position.set(0, 0, 0);
-      loadedHand.rotation.set(-0.2, handFacingOffset, 0);
+      loadedHand.rotation.set(-0.2, handForwardYaw, 0);
+      fistAnimationProgress = 0;
+      gestureProgress = 0;
+      if (handRig) {
+        applyHandPose(handRig, [0, 0, 0, 0], 0);
+      }
     };
 
     // --- Load Hand Model (GLB) ---
@@ -297,7 +409,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
         setHandScale(3);
         loadedHand.position.set(0, 0, 0);
-        loadedHand.rotation.set(0.3, Math.PI + handFacingOffset, 0);
+        loadedHand.rotation.set(0.3, handForwardYaw, 0);
         loadedHand.updateMatrixWorld(true);
 
         // Center after all initial transforms have been applied.
@@ -307,31 +419,13 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         loadedHand.updateMatrixWorld(true);
         loadedHand.visible = false;
 
-        // Find the intended clip by partial name, then safely fall back to
-        // the first clip rather than silently leaving the hand unanimated.
-        if (gltf.animations.length > 0) {
-          handMixer = new THREE.AnimationMixer(loadedHand);
-
-          const clip =
-            gltf.animations.find((animation) => {
-              const name = animation.name.toLowerCase();
-              return (
-                name.includes("grab") ||
-                name.includes("hold") ||
-                name.includes("fist") ||
-                name.includes("close")
-              );
-            }) ?? gltf.animations[0];
-
-          console.log(
-            `Using hand animation: "${clip.name}" (${clip.duration.toFixed(2)}s)`
-          );
-
-          grabHoldAction = handMixer.clipAction(clip);
-          grabHoldAction.setLoop(THREE.LoopOnce, 1);
-          grabHoldAction.clampWhenFinished = true;
-        } else {
-          console.warn("Hand.glb contains no animation clips");
+        // Ignore embedded GLB clips. Build the animation from the rig's
+        // rest pose so the fist motion is fully controlled in this component.
+        try {
+          handRig = createHandRig(loadedHand);
+          console.log("Procedural hand rig initialized");
+        } catch (error) {
+          console.error("Could not initialize procedural hand rig:", error);
         }
 
         // Sample mesh vertices in world space after the final transform.
@@ -448,84 +542,102 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         revealHand();
       }
 
-      // Always advance the mixer when it exists. Visibility should not control
-      // whether the animation timeline is updated.
-      if (handMixer) {
-        handMixer.update(delta);
-      }
-
       if (loadedHand && loadedHand.visible) {
         switch (phase) {
-          case PHASE_ROTATE: {
-            const rotateProgress = (splashElapsed - 4000) / 2000;
-            loadedHand.rotation.y =
-              Math.PI + handFacingOffset + rotateProgress * Math.PI * 2;
-            loadedHand.rotation.x =
-              0.3 + Math.sin(rotateProgress * Math.PI * 2) * 0.4;
-            loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.15;
-            setHandScale(3);
-            break;
-          }
-
           case PHASE_CLOSE_FIST: {
-            loadedHand.rotation.y = Math.PI + handFacingOffset;
+            // 4–6s: close the open palm into a tight fist.
+            loadedHand.rotation.y = handForwardYaw;
             loadedHand.rotation.x = 0.3;
             loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
             loadedHand.position.z = 0;
             setHandScale(3);
 
-            // Start the one-shot animation once on phase entry. The old code
-            // restarted it every frame after LoopOnce had finished.
-            if (!closeFistStarted) {
-              closeFistStarted = true;
-              if (grabHoldAction) {
-                console.log("Playing hand close animation");
-                switchHandAction(grabHoldAction, {
-                  loop: THREE.LoopOnce,
-                  repetitions: 1,
-                  clampWhenFinished: true,
-                  restart: true,
-                });
-              }
+            fistAnimationProgress = THREE.MathUtils.clamp(
+              (splashElapsed - 4000) / 2000,
+              0,
+              1
+            );
+            if (handRig) {
+              applyProceduralFistPose(handRig, fistAnimationProgress);
             }
             break;
           }
 
-          case PHASE_FIST_BUMP: {
-            // Fade the skeletal action out while the separate fist-bump motion
-            // takes over, preventing a visible pose snap at the phase boundary.
-            if (activeHandAction) {
-              stopHandAction();
+          case PHASE_TURN_FIST: {
+            // 6–8s: keep the fist tight while turning it exactly 180 degrees.
+            if (handRig) {
+              applyProceduralFistPose(handRig, 1);
             }
 
-            const bumpProgress = Math.min((splashElapsed - 8000) / 2000, 1);
-            const bumpEased = easeOutCubic(bumpProgress);
+            const turnProgress = THREE.MathUtils.clamp(
+              (splashElapsed - 6000) / 2000,
+              0,
+              1
+            );
+            const turnEased = easeInOutCubic(turnProgress);
+            loadedHand.rotation.y = handForwardYaw + turnEased * Math.PI;
+            loadedHand.rotation.x = 0.3;
+            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            loadedHand.position.z = 0;
+            setHandScale(3);
+            break;
+          }
 
-            loadedHand.position.z = bumpEased * 5;
-            setHandScale(3 + bumpEased * 1.5);
-            loadedHand.rotation.x = 0.3 + bumpEased * 0.5;
-            loadedHand.rotation.y = Math.PI + handFacingOffset;
-
-            if (bumpProgress > 0.6) {
-              const impactIntensity = (bumpProgress - 0.6) / 0.4;
-              hologramMaterial.emissiveIntensity =
-                0.8 + impactIntensity * 0.8;
-              camera.position.x = Math.sin(elapsed * 50) * impactIntensity * 0.1;
-              camera.position.y =
-                1.5 + Math.cos(elapsed * 50) * impactIntensity * 0.1;
+          case PHASE_EXTEND_THUMB: {
+            // 8–9s: hold the fist and extend the thumb fully.
+            if (handRig) {
+              const thumbProgress = THREE.MathUtils.clamp(
+                (splashElapsed - 8000) / 1000,
+                0,
+                1
+              );
+              const thumbEased = easeInOutCubic(thumbProgress);
+              applyHandPose(handRig, [1, 1, 1, 1], 1 - thumbEased);
             }
+
+            loadedHand.rotation.y = handForwardYaw + Math.PI;
+            loadedHand.rotation.x = 0.3;
+            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            loadedHand.position.z = 0;
+            setHandScale(3);
+            break;
+          }
+
+          case PHASE_EXTEND_MIDDLE: {
+            // 9–10s: keep the thumb extended, then extend the middle finger.
+            if (handRig) {
+              const middleProgress = THREE.MathUtils.clamp(
+                (splashElapsed - 9000) / 1000,
+                0,
+                1
+              );
+              const middleEased = easeInOutCubic(middleProgress);
+              applyHandPose(
+                handRig,
+                [1, 1 - middleEased, 1, 1],
+                0,
+                false
+              );
+            }
+
+            loadedHand.rotation.y = handForwardYaw + Math.PI;
+            loadedHand.rotation.x = 0.3;
+            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            loadedHand.position.z = 0;
+            setHandScale(3);
             break;
           }
 
           case PHASE_FADE_OUT: {
-            if (activeHandAction) {
-              stopHandAction();
+            // Preserve the final gesture while fading out.
+            if (handRig) {
+              applyHandPose(handRig, [1, 0, 1, 1], 0, false);
             }
 
             loadedHand.position.z = 5;
             setHandScale(4.5);
             loadedHand.rotation.x = 0.8;
-            loadedHand.rotation.y = Math.PI + handFacingOffset;
+            loadedHand.rotation.y = handForwardYaw + Math.PI;
             hologramMaterial.emissiveIntensity = 0.3;
             break;
           }
@@ -577,7 +689,6 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         clearTimeout(fadeOutTimer);
       }
 
-      handMixer?.stopAllAction();
       renderer.dispose();
 
       if (mount.contains(renderer.domElement)) {
