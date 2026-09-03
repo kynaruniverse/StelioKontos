@@ -169,6 +169,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     let loadedHand: THREE.Group | null = null;
     let handMixer: THREE.AnimationMixer | null = null;
     let handAnimations: THREE.AnimationClip[] = [];
+    let currentAnimationAction: THREE.AnimationAction | null = null;
 
     // Fallback procedural hand
     const createProceduralHand = () => {
@@ -216,6 +217,29 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       "/Hand.glb",
       (gltf) => {
         loadedHand = gltf.scene;
+
+        // DEBUG: Log all nodes and their names
+        console.log("=== ALL NODES IN MODEL ===");
+        loadedHand.traverse((child) => {
+          console.log(`Type: ${child.type}, Name: "${child.name}"`);
+        });
+        console.log("=== END NODES ===");
+
+        // Log animations
+        if (gltf.animations && gltf.animations.length > 0) {
+          console.log(`\n=== ANIMATIONS (${gltf.animations.length}) ===`);
+          gltf.animations.forEach((anim, i) => {
+            console.log(`Animation ${i}: "${anim.name}" - Duration: ${anim.duration}s`);
+            anim.tracks.forEach((track) => {
+              console.log(`  Track: ${track.name}`);
+            });
+          });
+          console.log("=== END ANIMATIONS ===\n");
+        } else {
+          console.log("No animations found in this model");
+        }
+
+        // Apply hologram material
         loadedHand.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             child.material = hologramMaterial;
@@ -223,12 +247,12 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         });
 
         // Scale and position adjustments
-        loadedHand.scale.setScalar(1);
+        loadedHand.scale.setScalar(3);
         loadedHand.position.set(0, 0, 0);
-        loadedHand.rotation.y = Math.PI;
+        loadedHand.rotation.y = 0;
         loadedHand.rotation.x = -0.2;
 
-        // Center the hand by computing bounding box
+        // Center the hand
         const box = new THREE.Box3().setFromObject(loadedHand);
         const center = box.getCenter(new THREE.Vector3());
         loadedHand.position.sub(center);
@@ -261,11 +285,11 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     const totalSplashTime = 11000;
 
     // Animation phases
-    const PHASE_RENDER = 0; // 0-2s: Hand materializes
-    const PHASE_OPEN = 1; // 2-4s: Hand open, floating
-    const PHASE_CLOSE_FIST = 2; // 4-6s: Hand closes into fist
-    const PHASE_FIST_HOLD = 3; // 6-8s: Fist held
-    const PHASE_FIST_BUMP = 4; // 8-9.5s: Fist bumps toward screen
+    const PHASE_RENDER = 0; // 0-1.5s: Hand materializes
+    const PHASE_ROTATE = 1; // 1.5-5s: Hand rotates showing all angles
+    const PHASE_CLOSE_FIST = 2; // 5-7s: Hand closes into fist
+    const PHASE_FIST_HOLD = 3; // 7-7.5s: Fist held
+    const PHASE_FIST_BUMP = 4; // 7.5-9.5s: Fist bumps toward screen
     const PHASE_FADE_OUT = 5; // 9.5-11s: Fade out
 
     let completed = false;
@@ -280,7 +304,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       }, 1000);
     };
 
-    // Track fist closure for procedural animation
+    // Track fist closure
     let fistClosure = 0;
 
     const animate = () => {
@@ -300,10 +324,10 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
       // Determine current phase
       let phase: number;
-      if (splashElapsed < 2000) phase = PHASE_RENDER;
-      else if (splashElapsed < 4000) phase = PHASE_OPEN;
-      else if (splashElapsed < 6000) phase = PHASE_CLOSE_FIST;
-      else if (splashElapsed < 8000) phase = PHASE_FIST_HOLD;
+      if (splashElapsed < 1500) phase = PHASE_RENDER;
+      else if (splashElapsed < 5000) phase = PHASE_ROTATE;
+      else if (splashElapsed < 7000) phase = PHASE_CLOSE_FIST;
+      else if (splashElapsed < 7500) phase = PHASE_FIST_HOLD;
       else if (splashElapsed < 9500) phase = PHASE_FIST_BUMP;
       else phase = PHASE_FADE_OUT;
 
@@ -316,72 +340,83 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
         switch (phase) {
           case PHASE_RENDER:
-            // Materialize: scale from 0 to 1
-            const renderProgress = splashElapsed / 2000;
+            // Materialize
+            const renderProgress = splashElapsed / 1500;
             const renderEased = easeOutBack(renderProgress);
-            loadedHand.scale.setScalar(renderEased);
+            loadedHand.scale.setScalar(3 * renderEased);
             loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.1;
-            loadedHand.rotation.y = elapsed * 0.3;
+            loadedHand.rotation.y = 0;
+            loadedHand.position.z = 0;
+            loadedHand.rotation.x = -0.2;
+            fistClosure = 0;
             break;
 
-          case PHASE_OPEN:
-            // Open hand floating
-            loadedHand.scale.setScalar(1);
-            loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.12;
-            loadedHand.rotation.y += 0.004;
-            loadedHand.rotation.x = -0.2 + Math.sin(elapsed * 0.8) * 0.05;
+          case PHASE_ROTATE:
+            // Full rotation showing all angles
+            loadedHand.scale.setScalar(3);
+            const rotateProgress = (splashElapsed - 1500) / 3500;
+            loadedHand.rotation.y = rotateProgress * Math.PI * 2;
+            loadedHand.rotation.x = -0.2 + Math.sin(rotateProgress * Math.PI * 2) * 0.4;
+            loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.15;
+            loadedHand.position.z = 0;
             fistClosure = 0;
             break;
 
           case PHASE_CLOSE_FIST:
             // Close into fist
-            const closeProgress = (splashElapsed - 4000) / 2000;
+            const closeProgress = (splashElapsed - 5000) / 2000;
             fistClosure = easeInOutCubic(closeProgress);
-            
-            // Apply fist closure to fingers
             applyFistClosure(fistClosure);
-            
-            loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.12;
-            loadedHand.rotation.y += 0.002;
+            loadedHand.rotation.y = 0;
+            loadedHand.rotation.x = -0.2;
+            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            loadedHand.position.z = 0;
+            loadedHand.scale.setScalar(3);
             break;
 
           case PHASE_FIST_HOLD:
             // Hold fist
             fistClosure = 1;
             applyFistClosure(1);
-            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            loadedHand.rotation.y = 0;
+            loadedHand.rotation.x = -0.2;
+            loadedHand.position.y = Math.sin(elapsed * 1.2) * 0.05;
+            loadedHand.position.z = 0;
+            loadedHand.scale.setScalar(3);
             break;
 
           case PHASE_FIST_BUMP:
             // Fist bump toward screen
-            const bumpProgress = (splashElapsed - 8000) / 1500;
-            const bumpEased = easeOutCubic(bumpProgress);
-            
-            // Move hand toward camera (increased Z)
-            loadedHand.position.z = bumpEased * 3;
-            loadedHand.scale.setScalar(1 + bumpEased * 0.5);
-            
-            // Slight rotation for impact
-            loadedHand.rotation.x = -0.2 + bumpEased * 0.3;
-            
+            const bumpProgress = (splashElapsed - 7500) / 2000;
+            const bumpEased = easeOutCubic(Math.min(bumpProgress, 1));
+            loadedHand.position.z = bumpEased * 5;
+            loadedHand.scale.setScalar(3 + bumpEased * 1.5);
+            loadedHand.rotation.x = -0.2 + bumpEased * 0.5;
+            loadedHand.rotation.y = 0;
             fistClosure = 1;
             applyFistClosure(1);
             
-            // Impact flash
-            const impactIntensity = bumpProgress > 0.7 ? (bumpProgress - 0.7) / 0.3 : 0;
-            hologramMaterial.uniforms.glowColor.value.setHSL(
-              0.45 + impactIntensity * 0.1,
-              1,
-              0.5 + impactIntensity * 0.3
-            );
+            if (bumpProgress > 0.6) {
+              const impactIntensity = (bumpProgress - 0.6) / 0.4;
+              hologramMaterial.uniforms.glowColor.value.setHSL(
+                0.5 - impactIntensity * 0.1,
+                1,
+                0.5 + impactIntensity * 0.4
+              );
+              camera.position.x = Math.sin(elapsed * 50) * impactIntensity * 0.1;
+              camera.position.y = 1.5 + Math.cos(elapsed * 50) * impactIntensity * 0.1;
+            }
             break;
 
           case PHASE_FADE_OUT:
-            // Fade out
-            loadedHand.position.z = 3;
-            loadedHand.scale.setScalar(1.5);
+            // Hold near camera
+            loadedHand.position.z = 5;
+            loadedHand.scale.setScalar(4.5);
+            loadedHand.rotation.x = 0.3;
+            loadedHand.rotation.y = 0;
             fistClosure = 1;
             applyFistClosure(1);
+            hologramMaterial.uniforms.glowColor.value.setHSL(0.5, 1, 0.3);
             break;
         }
       }
@@ -407,17 +442,18 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       renderer.render(scene, camera);
     };
 
-    // Helper: Apply fist closure to procedural hand bones
+    // Apply fist closure to bones
     const applyFistClosure = (amount: number) => {
       if (!loadedHand) return;
 
-      // Try to find finger bones in the model
       loadedHand.traverse((child) => {
         if (child instanceof THREE.Bone) {
           const name = child.name.toLowerCase();
-          if (name.includes("finger") || name.includes("thumb") || name.includes("index") || 
-              name.includes("middle") || name.includes("ring") || name.includes("pinky")) {
-            // Apply rotation based on bone type
+          if (
+            name.includes("finger") || name.includes("thumb") || 
+            name.includes("index") || name.includes("middle") || 
+            name.includes("ring") || name.includes("pinky")
+          ) {
             if (name.includes("thumb")) {
               child.rotation.x = amount * 0.8;
               child.rotation.z = -amount * 0.6;
