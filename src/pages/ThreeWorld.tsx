@@ -291,11 +291,11 @@ export default function ThreeWorld() {
       }
       body.rotation.z = THREE.MathUtils.damp(body.rotation.z, -velocity.x * 0.035, 8, delta);
       beaconPulse(world, delta);
-      // Only use forward/backward (Z) look-ahead, not left/right (X)
-      lookAhead.set(0, 0, velocity.z * 0.5);
-      targetCamera.set(car.position.x, 7.5, car.position.z + 12 + lookAhead.z);
+      // Subtle uniform look-ahead: reduced from 0.5 to 0.15
+      lookAhead.set(velocity.x * 0.15, 0, velocity.z * 0.15);
+      targetCamera.set(car.position.x + lookAhead.x, 7.5, car.position.z + 12 + lookAhead.z);
       camera.position.lerp(targetCamera, 1 - Math.pow(0.001, delta));
-      camera.lookAt(car.position.x, 0.8, car.position.z - 2 + lookAhead.z);
+      camera.lookAt(car.position.x + lookAhead.x, 0.8, car.position.z - 2 + lookAhead.z);
       checkLandmarks();
       renderer.render(scene, camera);
     };
