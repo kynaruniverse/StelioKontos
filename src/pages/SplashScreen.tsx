@@ -137,7 +137,6 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     const particleInitialRotations: THREE.Euler[] = [];
     const particleCount = 800;
 
-    // Create particles that will form the hand
     const particleGeometry = new THREE.BoxGeometry(0.08, 0.08, 0.08);
     const particleMaterial = new THREE.MeshStandardMaterial({
       color: 0x00ffcc,
@@ -151,12 +150,11 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
     for (let i = 0; i < particleCount; i++) {
       const mesh = new THREE.Mesh(particleGeometry, particleMaterial);
-      
-      // Random initial position in a large sphere
       const radius = 15;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
       const r = radius * Math.cbrt(Math.random());
+
       mesh.position.set(
         r * Math.sin(phi) * Math.cos(theta),
         r * Math.sin(phi) * Math.sin(theta),
@@ -168,108 +166,186 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         Math.random() * Math.PI
       );
       mesh.scale.setScalar(0.5 + Math.random() * 0.5);
-      
+
       particles.push(mesh);
       particleInitialPositions.push(mesh.position.clone());
       particleInitialRotations.push(mesh.rotation.clone());
       scene.add(mesh);
     }
 
-    // --- Load Hand Model (GLB) ---
-    const loader = new GLTFLoader();
+    // --- Animation State ---
+    const clock = new THREE.Clock();
+    const startTime = performance.now();
+    const totalSplashTime = 12000;
+
+    const PHASE_PARTICLES = 0;
+    const PHASE_ROTATE = 1;
+    const PHASE_CLOSE_FIST = 2;
+    const PHASE_FIST_BUMP = 3;
+    const PHASE_FADE_OUT = 4;
+
+    let completed = false;
+    let fadeOutTimer: ReturnType<typeof setTimeout> | null = null;
+    let handRevealed = false;
+    let closeFistStarted = false;
     let loadedHand: THREE.Group | null = null;
     let handMixer: THREE.AnimationMixer | null = null;
     let grabHoldAction: THREE.AnimationAction | null = null;
+    let activeHandAction: THREE.AnimationAction | null = null;
+    const animationBlendDuration = 0.35;
+
+    const switchHandAction = (
+      nextAction: THREE.AnimationAction | null,
+      options: {
+        loop?: THREE.AnimationActionLoopStyles;
+        repetitions?: number;
+        clampWhenFinished?: boolean;
+        restart?: boolean;
+      } = {}
+    ) => {
+      if (!nextAction) return;
+
+      const {
+        loop = THREE.LoopOnce,
+        repetitions = 1,
+        clampWhenFinished = true,
+        restart = false,
+      } = options;
+
+      if (activeHandAction === nextAction && !restart) return;
+
+      if (activeHandAction && activeHandAction !== nextAction) {
+        activeHandAction.fadeOut(animationBlendDuration);
+      }
+
+      nextAction.setLoop(loop, repetitions);
+      nextAction.clampWhenFinished = clampWhenFinished;
+      nextAction.reset();
+      nextAction.setEffectiveWeight(1);
+      nextAction.fadeIn(animationBlendDuration);
+      nextAction.play();
+      activeHandAction = nextAction;
+    };
+
+    const stopHandAction = () => {
+      if (activeHandAction) {
+        activeHandAction.fadeOut(animationBlendDuration);
+        activeHandAction = null;
+      }
+    };
+
+    const getPhase = (splashElapsed: number): number => {
+      if (splashElapsed < 4000) return PHASE_PARTICLES;
+      if (splashElapsed < 6000) return PHASE_ROTATE;
+      if (splashElapsed < 8000) return PHASE_CLOSE_FIST;
+      if (splashElapsed < 10000) return PHASE_FIST_BUMP;
+      return PHASE_FADE_OUT;
+    };
+
+    const revealHand = () => {
+      if (handRevealed || !loadedHand) return;
+
+      handRevealed = true;
+      particles.forEach((particle) => {
+        particle.visible = false;
+      });
+
+      loadedHand.visible = true;
+      loadedHand.scale.setScalar(3);
+      loadedHand.position.set(0, 0, 0);
+      loadedHand.rotation.set(-0.2, 0, 0);
+    };
+
+    // --- Load Hand Model (GLB) ---
+    const loader = new GLTFLoader();
 
     loader.load(
       "/Hand.glb",
       (gltf) => {
         loadedHand = gltf.scene;
 
-        // Apply hologram material
         loadedHand.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             child.material = hologramMaterial;
+            child.castShadow = false;
+            child.receiveShadow = false;
           }
         });
 
-        // Scale and position - face the camera with palm showing
         loadedHand.scale.setScalar(3);
         loadedHand.position.set(0, 0, 0);
-        loadedHand.rotation.y = Math.PI; // Rotate to face camera
-        loadedHand.rotation.x = 0.3; // Tilt slightly up
-        loadedHand.rotation.z = 0;
+        loadedHand.rotation.set(0.3, Math.PI, 0);
+        loadedHand.updateMatrixWorld(true);
 
-        // Center the hand
+        // Center after all initial transforms have been applied.
         const box = new THREE.Box3().setFromObject(loadedHand);
         const center = box.getCenter(new THREE.Vector3());
         loadedHand.position.sub(center);
-
-        // Hide hand initially (will reveal after particles assemble)
+        loadedHand.updateMatrixWorld(true);
         loadedHand.visible = false;
 
-        // Set up animation
-        if (gltf.animations && gltf.animations.length > 0) {
+        // Find the intended clip by partial name, then safely fall back to
+        // the first clip rather than silently leaving the hand unanimated.
+        if (gltf.animations.length > 0) {
           handMixer = new THREE.AnimationMixer(loadedHand);
-          
-          gltf.animations.forEach((clip) => {
-            console.log(`Animation found: ${clip.name} (${clip.duration}s)`);
-            if (clip.name === "GrabHold") {
-              grabHoldAction = handMixer!.clipAction(clip);
-              grabHoldAction.setLoop(THREE.LoopOnce, 1);
-              grabHoldAction.clampWhenFinished = true;
-              console.log("GrabHold action ready");
-            }
-          });
+
+          const clip =
+            gltf.animations.find((animation) => {
+              const name = animation.name.toLowerCase();
+              return (
+                name.includes("grab") ||
+                name.includes("hold") ||
+                name.includes("fist") ||
+                name.includes("close")
+              );
+            }) ?? gltf.animations[0];
+
+          console.log(
+            `Using hand animation: "${clip.name}" (${clip.duration.toFixed(2)}s)`
+          );
+
+          grabHoldAction = handMixer.clipAction(clip);
+          grabHoldAction.setLoop(THREE.LoopOnce, 1);
+          grabHoldAction.clampWhenFinished = true;
         } else {
-          console.log("No animations in model");
+          console.warn("Hand.glb contains no animation clips");
         }
 
-        // Sample points from the hand model to use as particle targets
-        const samplerGeometry = new THREE.Box3().setFromObject(loadedHand);
-        const samplerSize = samplerGeometry.getSize(new THREE.Vector3());
-        
-        // Generate target positions within the hand's bounding box
+        // Sample mesh vertices in world space after the final transform.
         loadedHand.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            // Sample points on the mesh surface
-            const posAttr = child.geometry.getAttribute("position");
-            if (posAttr) {
-              const step = Math.max(1, Math.floor(posAttr.count / 500));
-              for (let i = 0; i < posAttr.count; i += step) {
-                const vertex = new THREE.Vector3();
-                vertex.fromBufferAttribute(posAttr, i);
-                child.localToWorld(vertex);
-                particleTargets.push(vertex.clone());
-              }
-            }
+          if (!(child instanceof THREE.Mesh)) return;
+
+          const positionAttribute = child.geometry.getAttribute("position");
+          if (!positionAttribute) return;
+
+          const step = Math.max(1, Math.floor(positionAttribute.count / 500));
+          for (let i = 0; i < positionAttribute.count; i += step) {
+            const vertex = new THREE.Vector3().fromBufferAttribute(
+              positionAttribute,
+              i
+            );
+            child.localToWorld(vertex);
+            particleTargets.push(vertex.clone());
           }
         });
 
         scene.add(loadedHand);
-        console.log("Hand model loaded, sampled", particleTargets.length, "points");
+        console.log(
+          `Hand model loaded; sampled ${particleTargets.length} target points`
+        );
+
+        // If loading completed after the four-second particle phase, reveal
+        // immediately instead of leaving the hand hidden forever.
+        const splashElapsed = performance.now() - startTime;
+        if (splashElapsed >= 4000) {
+          revealHand();
+        }
       },
       undefined,
       (error) => {
         console.error("Error loading hand model:", error);
       }
     );
-
-    // --- Animation State Machine ---
-    const clock = new THREE.Clock();
-    const startTime = performance.now();
-    const totalSplashTime = 12000;
-
-    // Phases
-    const PHASE_PARTICLES = 0; // 0-4s: Particles converge
-    const PHASE_ROTATE = 1; // 4-6s: Hand rotates
-    const PHASE_CLOSE_FIST = 2; // 6-8s: Closes into fist
-    const PHASE_FIST_BUMP = 3; // 8-10s: Fist bumps toward screen
-    const PHASE_FADE_OUT = 4; // 10-12s: Fade out
-
-    let completed = false;
-    let fadeOutTimer: ReturnType<typeof setTimeout> | null = null;
-    let handRevealed = false;
 
     const fadeOut = () => {
       if (fadeRef.current) {
@@ -295,92 +371,85 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
       beamMaterial.uniforms.time.value = elapsed;
 
-      // Determine phase
-      let phase: number;
-      if (splashElapsed < 4000) phase = PHASE_PARTICLES;
-      else if (splashElapsed < 6000) phase = PHASE_ROTATE;
-      else if (splashElapsed < 8000) phase = PHASE_CLOSE_FIST;
-      else if (splashElapsed < 10000) phase = PHASE_FIST_BUMP;
-      else phase = PHASE_FADE_OUT;
+      const phase = getPhase(splashElapsed);
+      const particleProgress = Math.min(splashElapsed / 4000, 1);
+      const particleEased = easeOutCubic(particleProgress);
 
-      // Update mixer every frame
-      if (handMixer && loadedHand && loadedHand.visible) {
+      // Assemble only the particles that have corresponding hand targets.
+      particles.forEach((particle, i) => {
+        if (i >= particleTargets.length || particleProgress >= 1) return;
+
+        const target = particleTargets[i];
+        const initial = particleInitialPositions[i];
+        const initialRotation = particleInitialRotations[i];
+
+        particle.position.lerpVectors(initial, target, particleEased);
+        particle.rotation.set(
+          initialRotation.x * (1 - particleEased),
+          initialRotation.y * (1 - particleEased),
+          initialRotation.z * (1 - particleEased)
+        );
+        particle.scale.setScalar(0.5 + particleEased * 0.5);
+      });
+
+      // Reveal based on elapsed time, independently of when the GLB finishes.
+      // This handles both fast and slow network/model loads.
+      if (splashElapsed >= 4000) {
+        revealHand();
+      }
+
+      // Always advance the mixer when it exists. Visibility should not control
+      // whether the animation timeline is updated.
+      if (handMixer) {
         handMixer.update(delta);
       }
 
-      switch (phase) {
-        case PHASE_PARTICLES: {
-          const progress = Math.min(splashElapsed / 4000, 1);
-          const eased = easeOutCubic(progress);
-
-          // Animate particles toward targets
-          particles.forEach((particle, i) => {
-            if (i < particleTargets.length) {
-              const target = particleTargets[i];
-              const init = particleInitialPositions[i];
-              particle.position.x = init.x + (target.x - init.x) * eased;
-              particle.position.y = init.y + (target.y - init.y) * eased;
-              particle.position.z = init.z + (target.z - init.z) * eased;
-
-              const initRot = particleInitialRotations[i];
-              particle.rotation.x = initRot.x * (1 - eased);
-              particle.rotation.y = initRot.y * (1 - eased);
-              particle.rotation.z = initRot.z * (1 - eased);
-              
-              particle.scale.setScalar(0.5 + eased * 0.5);
-            }
-          });
-
-          // Hide particles and reveal hand when assembly complete
-          if (progress >= 1 && !handRevealed) {
-            handRevealed = true;
-            particles.forEach((p) => (p.visible = false));
-            if (loadedHand) {
-              loadedHand.visible = true;
-              loadedHand.scale.setScalar(3);
-              loadedHand.position.set(0, 0, 0);
-              loadedHand.rotation.y = 0;
-              loadedHand.rotation.x = -0.2;
-            }
-          }
-          break;
-        }
-
-        case PHASE_ROTATE: {
-          if (loadedHand && loadedHand.visible) {
-            // Rotate showing all angles
+      if (loadedHand && loadedHand.visible) {
+        switch (phase) {
+          case PHASE_ROTATE: {
             const rotateProgress = (splashElapsed - 4000) / 2000;
             loadedHand.rotation.y = Math.PI + rotateProgress * Math.PI * 2;
-            loadedHand.rotation.x = 0.3 + Math.sin(rotateProgress * Math.PI * 2) * 0.4;
+            loadedHand.rotation.x =
+              0.3 + Math.sin(rotateProgress * Math.PI * 2) * 0.4;
             loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.15;
             loadedHand.scale.setScalar(3);
+            break;
           }
-          break;
-        }
 
-        case PHASE_CLOSE_FIST: {
-          if (loadedHand && loadedHand.visible) {
-            // Play GrabHold animation
-            if (grabHoldAction) {
-              if (!grabHoldAction.isRunning()) {
-                console.log("Playing GrabHold animation");
-                grabHoldAction.reset();
-                grabHoldAction.play();
-              }
-            }
+          case PHASE_CLOSE_FIST: {
             loadedHand.rotation.y = Math.PI;
             loadedHand.rotation.x = 0.3;
             loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
             loadedHand.position.z = 0;
             loadedHand.scale.setScalar(3);
-          }
-          break;
-        }
 
-        case PHASE_FIST_BUMP: {
-          if (loadedHand && loadedHand.visible) {
-            const bumpProgress = (splashElapsed - 8000) / 2000;
-            const bumpEased = easeOutCubic(Math.min(bumpProgress, 1));
+            // Start the one-shot animation once on phase entry. The old code
+            // restarted it every frame after LoopOnce had finished.
+            if (!closeFistStarted) {
+              closeFistStarted = true;
+              if (grabHoldAction) {
+                console.log("Playing hand close animation");
+                switchHandAction(grabHoldAction, {
+                  loop: THREE.LoopOnce,
+                  repetitions: 1,
+                  clampWhenFinished: true,
+                  restart: true,
+                });
+              }
+            }
+            break;
+          }
+
+          case PHASE_FIST_BUMP: {
+            // Fade the skeletal action out while the separate fist-bump motion
+            // takes over, preventing a visible pose snap at the phase boundary.
+            if (activeHandAction) {
+              stopHandAction();
+            }
+
+            const bumpProgress = Math.min((splashElapsed - 8000) / 2000, 1);
+            const bumpEased = easeOutCubic(bumpProgress);
+
             loadedHand.position.z = bumpEased * 5;
             loadedHand.scale.setScalar(3 + bumpEased * 1.5);
             loadedHand.rotation.x = 0.3 + bumpEased * 0.5;
@@ -388,23 +457,27 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
             if (bumpProgress > 0.6) {
               const impactIntensity = (bumpProgress - 0.6) / 0.4;
-              hologramMaterial.emissiveIntensity = 0.8 + impactIntensity * 0.8;
+              hologramMaterial.emissiveIntensity =
+                0.8 + impactIntensity * 0.8;
               camera.position.x = Math.sin(elapsed * 50) * impactIntensity * 0.1;
-              camera.position.y = 1.5 + Math.cos(elapsed * 50) * impactIntensity * 0.1;
+              camera.position.y =
+                1.5 + Math.cos(elapsed * 50) * impactIntensity * 0.1;
             }
+            break;
           }
-          break;
-        }
 
-        case PHASE_FADE_OUT: {
-          if (loadedHand && loadedHand.visible) {
+          case PHASE_FADE_OUT: {
+            if (activeHandAction) {
+              stopHandAction();
+            }
+
             loadedHand.position.z = 5;
             loadedHand.scale.setScalar(4.5);
             loadedHand.rotation.x = 0.8;
             loadedHand.rotation.y = Math.PI;
             hologramMaterial.emissiveIntensity = 0.3;
+            break;
           }
-          break;
         }
       }
 
@@ -414,8 +487,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       outerRing.rotation.z = elapsed * 0.1;
 
       // Beam pulse
-      lightBeam.scale.x = 1.0 + Math.sin(elapsed * 10.0) * 0.02;
-      lightBeam.scale.z = 1.0 + Math.sin(elapsed * 10.0) * 0.02;
+      const beamPulse = 1 + Math.sin(elapsed * 10) * 0.02;
+      lightBeam.scale.x = beamPulse;
+      lightBeam.scale.z = beamPulse;
 
       // Stars
       stars.rotation.y += 0.0005;
@@ -428,13 +502,6 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
       renderer.render(scene, camera);
     };
-
-    // Easing functions
-    function easeOutBack(t: number): number {
-      const c1 = 1.70158;
-      const c3 = c1 + 1;
-      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
-    }
 
     function easeOutCubic(t: number): number {
       return 1 - Math.pow(1 - t, 3);
@@ -451,15 +518,21 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
     skipRef.current?.focus();
 
-    // Cleanup
     return () => {
       renderer.setAnimationLoop(null);
       window.removeEventListener("resize", handleResize);
-      if (fadeOutTimer) clearTimeout(fadeOutTimer);
+
+      if (fadeOutTimer) {
+        clearTimeout(fadeOutTimer);
+      }
+
+      handMixer?.stopAllAction();
       renderer.dispose();
+
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
       }
+
       scene.traverse((obj) => {
         if (
           obj instanceof THREE.Mesh ||
@@ -467,8 +540,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           obj instanceof THREE.Line
         ) {
           obj.geometry.dispose();
+
           if (Array.isArray(obj.material)) {
-            obj.material.forEach((m) => m.dispose());
+            obj.material.forEach((material) => material.dispose());
           } else if (obj.material instanceof THREE.Material) {
             obj.material.dispose();
           }
