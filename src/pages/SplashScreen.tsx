@@ -212,12 +212,16 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           handMixer = new THREE.AnimationMixer(loadedHand);
           
           gltf.animations.forEach((clip) => {
+            console.log(`Animation found: ${clip.name} (${clip.duration}s)`);
             if (clip.name === "GrabHold") {
               grabHoldAction = handMixer!.clipAction(clip);
               grabHoldAction.setLoop(THREE.LoopOnce, 1);
               grabHoldAction.clampWhenFinished = true;
+              console.log("GrabHold action ready");
             }
           });
+        } else {
+          console.log("No animations in model");
         }
 
         // Sample points from the hand model to use as particle targets
@@ -332,7 +336,10 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             particles.forEach((p) => (p.visible = false));
             if (loadedHand) {
               loadedHand.visible = true;
-              loadedHand.scale.setScalar(0);
+              loadedHand.scale.setScalar(3);
+              loadedHand.position.set(0, 0, 0);
+              loadedHand.rotation.y = 0;
+              loadedHand.rotation.x = -0.2;
             }
           }
           break;
@@ -340,28 +347,29 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
         case PHASE_ROTATE: {
           if (loadedHand && loadedHand.visible) {
-            // Scale in
-            const scaleProgress = Math.min((splashElapsed - 4000) / 500, 1);
-            loadedHand.scale.setScalar(3 * easeOutBack(scaleProgress));
-            
             // Rotate
             const rotateProgress = (splashElapsed - 4000) / 2000;
             loadedHand.rotation.y = rotateProgress * Math.PI * 2;
             loadedHand.rotation.x = -0.2 + Math.sin(rotateProgress * Math.PI * 2) * 0.4;
             loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.15;
+            loadedHand.scale.setScalar(3);
           }
           break;
         }
 
         case PHASE_CLOSE_FIST: {
           if (loadedHand && loadedHand.visible) {
-            if (grabHoldAction && !grabHoldAction.isRunning()) {
-              grabHoldAction.reset();
-              grabHoldAction.play();
+            // Play GrabHold animation
+            if (grabHoldAction) {
+              if (!grabHoldAction.isRunning()) {
+                grabHoldAction.reset();
+                grabHoldAction.play();
+              }
             }
             loadedHand.rotation.y = 0;
             loadedHand.rotation.x = -0.2;
             loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            loadedHand.position.z = 0;
             loadedHand.scale.setScalar(3);
           }
           break;
