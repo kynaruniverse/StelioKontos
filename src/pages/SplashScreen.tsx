@@ -71,9 +71,12 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     ctx.textBaseline = "middle";
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
+    // Wait for fonts to be ready so wordmark positions match the intended font
+    await document.fonts.ready;
+
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     const targetPositions: THREE.Vector3[] = [];
-    const samplingStep = 4; // sample every 4 pixels
+    const samplingStep = 6; // sample every 6 pixels (reduces particle count)
     const scale = 0.02; // scale from canvas pixels to world units
 
     for (let y = 0; y < canvas.height; y += samplingStep) {
@@ -182,11 +185,10 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       // Stars rotation
       stars.rotation.y += 0.0002;
 
-      renderer.render(scene, camera);
-      animationFrame = requestAnimationFrame(animate);
-    };
+        renderer.render(scene, camera);
+      };
 
-    animationFrame = requestAnimationFrame(animate);
+      renderer.setAnimationLoop(animate);
 
     // Easing function: easeOutBack
     function easeOutBack(t: number): number {
@@ -205,16 +207,6 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       }, 1000); // match CSS transition duration
     };
 
-    // Skip button handler
-    if (skipRef.current) {
-      skipRef.current.addEventListener("click", () => {
-        if (!completed) {
-          completed = true;
-          cancelAnimationFrame(animationFrame);
-          fadeOut();
-        }
-      });
-    }
 
     // Resize handler
     const handleResize = () => {
@@ -223,26 +215,43 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
     window.addEventListener("resize", handleResize);
+    
+    skipRef.current?.focus();
 
     // Cleanup
     return () => {
-      cancelAnimationFrame(animationFrame);
+      renderer.setAnimationLoop(null);
       window.removeEventListener("resize", handleResize);
       renderer.dispose();
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
       }
       scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
+        if (obj instanceof THREE.Mesh || obj instanceof THREE.Points || obj instanceof THREE.Line) {
           obj.geometry.dispose();
-          if (obj.material instanceof THREE.Material) obj.material.dispose();
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach((m) => m.dispose());
+          } else if (obj.material instanceof THREE.Material) {
+      obj.material.dispose();
+    }
+        }
+        if (obj instanceof THREE.Sprite) {
+          obj.material.map?.dispose();
+          obj.material.dispose();
         }
       });
     };
   }, [onComplete]);
 
   return (
-    <div ref={fadeRef} className="splash-screen" style={{ position: "fixed", inset: 0, zIndex: 100, background: "#111327" }}>
+    <div
+      ref={fadeRef}
+      className="splash-screen"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Loading Sidequest world"
+      style={{
+        position: "fixed", inset: 0, zIndex: 100, background: "#111327" }}>
       <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />
       <div className="splash-overlay" style={{
         position: "absolute",
@@ -276,6 +285,11 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           textTransform: "uppercase",
           cursor: "pointer",
           transition: "background 0.3s",
+        onClick={() => {
+          if (!completed) {
+            completed = true;
+            fadeOut();
+          }
         }}
         onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.2)")}
         onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}

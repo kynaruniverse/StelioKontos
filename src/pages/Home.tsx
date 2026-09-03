@@ -1,6 +1,7 @@
-import { useState } from "react";
-import ThreeWorld from "./ThreeWorld";
+import { lazy, Suspense, useState } from "react";
 import SplashScreen from "./SplashScreen";
+
+const ThreeWorld = lazy(() => import("./ThreeWorld"));
 
 export default function Home() {
   const [showSplash, setShowSplash] = useState(true);
@@ -11,8 +12,10 @@ export default function Home() {
 
   return (
     <>
-      {/* 3D World always rendered underneath (so it can initialize early) */}
-      <ThreeWorld />
+      {/* 3D World lazy-loaded and rendered underneath (initializes early) */}
+      <Suspense fallback={<div style={{ minHeight: "100svh", background: "#111327" }} />}>
+        <ThreeWorld />
+      </Suspense>
       {/* Splash screen overlay */}
       {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
     </>

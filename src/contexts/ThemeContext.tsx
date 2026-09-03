@@ -25,8 +25,8 @@ export function ThemeProvider({
   storageKey = "theme",
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
-    if (switchable) {
-      const stored = localStorage.getItem(storageKey);
+    if (switchable && typeof window !== "undefined") {
+      const stored = window.localStorage.getItem(storageKey);
       if (stored === "light" || stored === "dark") {
         return stored;
       }
@@ -42,8 +42,8 @@ export function ThemeProvider({
       root.classList.remove("dark");
     }
 
-    if (switchable) {
-      localStorage.setItem(storageKey, theme);
+    if (switchable && typeof window !== "undefined") {
+      window.localStorage.setItem(storageKey, theme);
     }
   }, [theme, switchable]);
 

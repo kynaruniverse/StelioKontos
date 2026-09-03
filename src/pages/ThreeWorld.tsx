@@ -105,11 +105,10 @@ function addLandmark(group: THREE.Group, landmark: Landmark) {
 
 export default function ThreeWorld() {
   const mountRef = useRef<HTMLDivElement>(null);
-  const frameRef = useRef<number | null>(null);
   const [started, setStarted] = useState(false);
   const [activeLandmark, setActiveLandmark] = useState("THE START LINE");
   
-  let elapsedTime = 0;
+  const elapsedTimeRef = useRef(0);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -233,6 +232,7 @@ export default function ThreeWorld() {
     const velocity = new THREE.Vector3();
     const timer = new THREE.Timer();
     const targetCamera = new THREE.Vector3();
+    const lookAhead = new THREE.Vector3();
     const keys: Record<string, keyof ControlState> = { ArrowUp: "forward", w: "forward", ArrowDown: "backward", s: "backward", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" };
     const keyDown = (event: KeyboardEvent) => {
       setStarted(true); // dismiss intro on any key press
@@ -267,7 +267,7 @@ export default function ThreeWorld() {
     const animate = (timestamp?: number) => {
       timer.update(timestamp);
       const delta = Math.min(timer.getDelta(), 0.04);
-      elapsedTime += delta;
+      elapsedTimeRef.current += delta;
       const input = new THREE.Vector3((controls.right ? 1 : 0) - (controls.left ? 1 : 0), 0, (controls.backward ? 1 : 0) - (controls.forward ? 1 : 0));
       if (input.lengthSq() > 0) {
         car.position.y = 0;
@@ -279,7 +279,7 @@ export default function ThreeWorld() {
         velocity.x = THREE.MathUtils.damp(velocity.x, 0, FRICTION, delta);
         velocity.z = THREE.MathUtils.damp(velocity.z, 0, FRICTION, delta);
         // Gentle idle bob
-        car.position.y = Math.sin(elapsedTime * 2) * 0.05;
+        car.position.y = Math.sin(elapsedTimeRef.current * 2) * 0.05;
       }
       const previousPosition = car.position.clone();
       car.position.addScaledVector(velocity, delta);
@@ -291,32 +291,38 @@ export default function ThreeWorld() {
       }
       body.rotation.z = THREE.MathUtils.damp(body.rotation.z, -velocity.x * 0.035, 8, delta);
       beaconPulse(world, delta);
-      const lookAhead = new THREE.Vector3(velocity.x * 0.5, 0, velocity.z * 0.5);
+      lookAhead.set(velocity.x * 0.5, 0, velocity.z * 0.5);
       targetCamera.set(car.position.x + lookAhead.x, 7.5, car.position.z + 12 + lookAhead.z);
       camera.position.lerp(targetCamera, 1 - Math.pow(0.001, delta));
       camera.lookAt(car.position.x + lookAhead.x, 0.8, car.position.z - 2 + lookAhead.z);
       checkLandmarks();
       renderer.render(scene, camera);
-      frameRef.current = requestAnimationFrame(animate);
     };
     const beaconPulse = (root: THREE.Group, delta: number) => {
       root.children.forEach((child) => {
-        if (child instanceof THREE.Group) child.children.forEach((nested) => { if (nested instanceof THREE.Mesh && nested.geometry instanceof THREE.OctahedronGeometry) nested.rotation.y += delta * 2; });
+        if (child instanceof THREE.Group) {
+          child.children.forEach((nested) => {
+            if (nested instanceof THREE.Mesh && nested.geometry instanceof THREE.OctahedronGeometry) {
+              nested.rotation.y += delta * 2;
+              const scale = 1 + Math.sin(elapsedTimeRef.current * 4) * 0.1;
+              nested.scale.setScalar(scale);
+            }
+          });
+        }
       });
     };
 
     return () => {
-      if (frameRef.current) cancelAnimationFrame(frameRef.current);
       if (renderer) renderer.setAnimationLoop(null);
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("resize", resize);
       scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
+        if (obj instanceof THREE.Mesh || obj instanceof THREE.Points || obj instanceof THREE.Line) {
           obj.geometry.dispose();
           if (Array.isArray(obj.material)) {
             obj.material.forEach((mat) => mat.dispose());
-          } else {
+          } else if (obj.material instanceof THREE.Material) {
             obj.material.dispose();
           }
         }

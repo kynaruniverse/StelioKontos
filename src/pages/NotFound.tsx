@@ -1,8 +1,14 @@
 import { Home, AlertTriangle } from "lucide-react";
 import { useLocation } from "wouter";
+import { useEffect, useRef } from "react";
 
 export default function NotFound() {
   const [, setLocation] = useLocation();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   const handleGoHome = () => {
     setLocation("/");
@@ -18,7 +24,12 @@ export default function NotFound() {
           <span className="status-dot status-dot-red" />
           ERROR / 404
         </p>
-        <h1 className="not-found-title">
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="not-found-title"
+          style={{ outline: "none" }}
+        >
           You wandered<br />
           <i>off the map.</i>
         </h1>

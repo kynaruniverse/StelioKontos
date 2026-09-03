@@ -145,7 +145,7 @@
     .world-intro h1 {
         margin: 0;
         color: var(--paper);
-        font-family: Georgia, serif;
+        font-family: "DM Serif Display", Georgia, serif;
         font-size: clamp(54px, 7vw, 100px);
         font-weight: 400;
         letter-spacing: -0.08em;
@@ -179,6 +179,7 @@
         letter-spacing: 0.1em;
         text-transform: uppercase;
         transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+        touch-action: manipulation;
     }
 
     .world-start:hover {
@@ -239,7 +240,7 @@
         color: var(--paper);
         cursor: pointer;
         font-size: 19px;
-        touch-action: none;
+        touch-action: manipulation;
     }
 
     .world-controls button:nth-child(1) {
@@ -328,6 +329,41 @@
 
         .world-footer span:last-child {
             display: none;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .world-intro {
+            left: 16px;
+            right: 16px;
+        }
+    
+        .world-intro h1 {
+            font-size: clamp(48px, 15vw, 70px);
+        }
+    
+        .world-lede {
+            max-width: 290px;
+            font-size: 10px;
+        }
+    
+        .world-start {
+            padding: 13px 15px;
+            font-size: 9px;
+        }
+    
+        .world-controls {
+            gap: 4px;
+            right: 12px;
+            bottom: 44px;
+        }
+    
+        .world-controls button {
+            font-size: 16px;
+        }
+    
+        .world-footer {
+            font-size: 5px;
         }
     }
 

@@ -473,6 +473,7 @@
     font-size: clamp(27px, 3.3vw, 46px); 
     letter-spacing: -.04em; 
     white-space: nowrap; 
+    will-change: transform;
   }
   .signal-track b { 
     color: var(--yellow); 
@@ -757,7 +758,7 @@
   }
   
   .light-topline {
-      color: rgba(243, 235, 216, 0.65);
+      color: rgba(var(--paper-rgb), 0.65);
   }
   
   .map-layout {
@@ -783,7 +784,7 @@
   .map-copy > p:not(.micro-heading) {
       max-width: 330px;
       margin: 28px 0 28px;
-      color: rgba(243, 235, 216, 0.66);
+      color: rgba(var(--paper-rgb), 0.66);
       font-size: 12px;
       line-height: 1.7;
   }
@@ -820,7 +821,7 @@
       align-items: center;
       gap: 13px;
       border: 0;
-      border-bottom: 1px solid rgba(243, 235, 216, 0.23);
+      border-bottom: 1px solid rgba(var(--paper-rgb), 0.23);
       background: none;
       color: var(--paper);
       text-align: left;
@@ -868,7 +869,7 @@
   }
   
   .map-stop small {
-      color: rgba(243, 235, 216, 0.6);
+      color: rgba(var(--paper-rgb), 0.6);
       font-size: 10px;
   }
   
@@ -1135,7 +1136,7 @@
       width: 740px;
       height: 740px;
       position: absolute;
-      border: 2px dashed rgba(243, 235, 216, 0.55);
+      border: 2px dashed rgba(var(--paper-rgb), 0.55);
       border-radius: 50%;
       transform: rotate(24deg);
   }
@@ -1173,7 +1174,7 @@
   .final-content > p:not(.hero-kicker) {
       max-width: 385px;
       margin: 28px auto 31px;
-      color: rgba(243, 235, 216, 0.76);
+      color: rgba(var(--paper-rgb), 0.76);
       font-size: 12px;
       line-height: 1.7;
   }
@@ -1241,7 +1242,7 @@
   .sq-footer p {
       justify-self: center;
       margin: 0;
-      color: rgba(243, 235, 216, 0.6);
+      color: rgba(var(--paper-rgb), 0.6);
       font-size: 9px;
       letter-spacing: 0.04em;
   }

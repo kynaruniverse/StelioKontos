@@ -1,4 +1,4 @@
-import { Component, ReactNode } from "react";
+import { Component, ReactNode, createRef } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 
 interface Props {
@@ -11,9 +11,17 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
+  private headingRef = createRef<HTMLHeadingElement>();
+
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false, error: null };
+  }
+  
+  componentDidMount() {
+    if (this.state.hasError) {
+      this.headingRef.current?.focus();
+    }
   }
 
   static getDerivedStateFromError(error: Error): State {
@@ -23,7 +31,7 @@ class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="error-shell">
+        <div className="error-shell" role="alert" aria-live="assertive">
           <div className="error-card">
             <div className="error-icon">
               <AlertTriangle size={40} strokeWidth={2.5} />
@@ -32,7 +40,12 @@ class ErrorBoundary extends Component<Props, State> {
               <span className="status-dot status-dot-red" />
               SYSTEM ERROR / 500
             </p>
-            <h1 className="error-title">
+            <h1
+              ref={this.headingRef}
+              tabIndex={-1}
+              style={{ outline: "none" }}
+              className="error-title"
+            >
               The world<br />
               <i>glitched.</i>
             </h1>
