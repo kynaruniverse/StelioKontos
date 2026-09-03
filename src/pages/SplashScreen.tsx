@@ -193,11 +193,12 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           }
         });
 
-        // Scale and position
+        // Scale and position - face the camera with palm showing
         loadedHand.scale.setScalar(3);
         loadedHand.position.set(0, 0, 0);
-        loadedHand.rotation.y = 0;
-        loadedHand.rotation.x = -0.2;
+        loadedHand.rotation.y = Math.PI; // Rotate to face camera
+        loadedHand.rotation.x = 0.3; // Tilt slightly up
+        loadedHand.rotation.z = 0;
 
         // Center the hand
         const box = new THREE.Box3().setFromObject(loadedHand);
@@ -302,8 +303,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       else if (splashElapsed < 10000) phase = PHASE_FIST_BUMP;
       else phase = PHASE_FADE_OUT;
 
-      // Update mixer
-      if (handMixer) {
+      // Update mixer every frame
+      if (handMixer && loadedHand && loadedHand.visible) {
         handMixer.update(delta);
       }
 
@@ -347,10 +348,10 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
         case PHASE_ROTATE: {
           if (loadedHand && loadedHand.visible) {
-            // Rotate
+            // Rotate showing all angles
             const rotateProgress = (splashElapsed - 4000) / 2000;
-            loadedHand.rotation.y = rotateProgress * Math.PI * 2;
-            loadedHand.rotation.x = -0.2 + Math.sin(rotateProgress * Math.PI * 2) * 0.4;
+            loadedHand.rotation.y = Math.PI + rotateProgress * Math.PI * 2;
+            loadedHand.rotation.x = 0.3 + Math.sin(rotateProgress * Math.PI * 2) * 0.4;
             loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.15;
             loadedHand.scale.setScalar(3);
           }
@@ -362,12 +363,13 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             // Play GrabHold animation
             if (grabHoldAction) {
               if (!grabHoldAction.isRunning()) {
+                console.log("Playing GrabHold animation");
                 grabHoldAction.reset();
                 grabHoldAction.play();
               }
             }
-            loadedHand.rotation.y = 0;
-            loadedHand.rotation.x = -0.2;
+            loadedHand.rotation.y = Math.PI;
+            loadedHand.rotation.x = 0.3;
             loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
             loadedHand.position.z = 0;
             loadedHand.scale.setScalar(3);
@@ -381,8 +383,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             const bumpEased = easeOutCubic(Math.min(bumpProgress, 1));
             loadedHand.position.z = bumpEased * 5;
             loadedHand.scale.setScalar(3 + bumpEased * 1.5);
-            loadedHand.rotation.x = -0.2 + bumpEased * 0.5;
-            loadedHand.rotation.y = 0;
+            loadedHand.rotation.x = 0.3 + bumpEased * 0.5;
+            loadedHand.rotation.y = Math.PI;
 
             if (bumpProgress > 0.6) {
               const impactIntensity = (bumpProgress - 0.6) / 0.4;
@@ -398,7 +400,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           if (loadedHand && loadedHand.visible) {
             loadedHand.position.z = 5;
             loadedHand.scale.setScalar(4.5);
-            loadedHand.rotation.x = 0.3;
+            loadedHand.rotation.x = 0.8;
+            loadedHand.rotation.y = Math.PI;
             hologramMaterial.emissiveIntensity = 0.3;
           }
           break;
