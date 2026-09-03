@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -24,16 +25,63 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       0.1,
       1000
     );
-    camera.position.set(0, 0, 6);
+    camera.position.set(0, 1.5, 8);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     mount.appendChild(renderer.domElement);
 
+    // --- Hologram Shader Material ---
+    const vertexShader = `
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      varying vec3 vWorldPosition;
+
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vViewPosition = -mvPosition.xyz;
+        vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `;
+
+    const fragmentShader = `
+      uniform vec3 glowColor;
+      uniform float time;
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      varying vec3 vWorldPosition;
+
+      void main() {
+        vec3 normal = normalize(vNormal);
+        vec3 viewDir = normalize(vViewPosition);
+        float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 2.5);
+        float scanline = sin(vWorldPosition.y * 15.0 - time * 5.0) * 0.25 + 0.75;
+        float flicker = sin(time * 40.0) * cos(time * 20.0) * 0.05 + 0.95;
+        float alpha = (fresnel + 0.15) * scanline * flicker;
+        vec3 finalColor = glowColor * (fresnel + 0.3);
+        gl_FragColor = vec4(finalColor, alpha);
+      }
+    `;
+
+    const hologramMaterial = new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader,
+      uniforms: {
+        time: { value: 0.0 },
+        glowColor: { value: new THREE.Color(0x00ffcc) },
+      },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+
     // --- Stars background ---
     const starsGeometry = new THREE.BufferGeometry();
-    const starsCount = 500;
+    const starsCount = 600;
     const starsPositions = new Float32Array(starsCount * 3);
     for (let i = 0; i < starsCount * 3; i += 3) {
       starsPositions[i] = (Math.random() - 0.5) * 40;
@@ -54,46 +102,53 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     const stars = new THREE.Points(starsGeometry, starsMaterial);
     scene.add(stars);
 
-    // --- Hologram Shader Material ---
-    const vertexShader = `
-      varying vec3 vNormal;
-      varying vec3 vViewPosition;
-      varying vec3 vModelPosition;
+    // --- Projection Pod ---
+    const podGroup = new THREE.Group();
+    podGroup.position.y = -3;
 
-      void main() {
-        vNormal = normalize(normalMatrix * normal);
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        vViewPosition = -mvPosition.xyz;
-        vModelPosition = position;
-        gl_Position = projectionMatrix * mvPosition;
-      }
-    `;
+    const podBaseGeo = new THREE.CylinderGeometry(1.5, 1.7, 0.2, 32);
+    const podBase = new THREE.Mesh(podBaseGeo, hologramMaterial);
+    podGroup.add(podBase);
 
-    const fragmentShader = `
-      uniform vec3 glowColor;
-      uniform float time;
-      varying vec3 vNormal;
-      varying vec3 vViewPosition;
-      varying vec3 vModelPosition;
+    const createGridRing = (radius: number, segments: number) => {
+      const ringGeo = new THREE.RingGeometry(radius - 0.02, radius, segments);
+      const ring = new THREE.Mesh(ringGeo, hologramMaterial);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.11;
+      return ring;
+    };
 
-      void main() {
-        vec3 normal = normalize(vNormal);
-        vec3 viewDir = normalize(vViewPosition);
-        float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
+    const innerRing = createGridRing(0.6, 32);
+    const middleRing = createGridRing(1.0, 48);
+    const outerRing = createGridRing(1.4, 64);
+    podGroup.add(innerRing, middleRing, outerRing);
 
-        float scanline = sin(vModelPosition.y * 30.0 - time * 5.0) * 0.25 + 0.75;
-        float flicker = sin(time * 40.0) * cos(time * 20.0) * 0.08 + 0.92;
+    scene.add(podGroup);
 
-        float alpha = (fresnel + 0.15) * scanline * flicker;
-        vec3 finalColor = glowColor * (fresnel + 0.3);
-
-        gl_FragColor = vec4(finalColor, alpha);
-      }
-    `;
-
-    const hologramMaterial = new THREE.ShaderMaterial({
-      vertexShader: vertexShader,
-      fragmentShader: fragmentShader,
+    // --- Volumetric Light Beam ---
+    const beamMaterial = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec2 vUv;
+        varying float vHeight;
+        void main() {
+          vUv = uv;
+          vHeight = position.y;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 glowColor;
+        uniform float time;
+        varying vec2 vUv;
+        varying float vHeight;
+        void main() {
+          float horizontalGlow = sin(vUv.x * 3.14159);
+          float verticalFade = 1.0 - (vHeight + 1.5) / 3.5;
+          float upwardPulse = sin(vHeight * 4.0 - time * 8.0) * 0.15 + 0.85;
+          float alpha = horizontalGlow * verticalFade * upwardPulse * 0.3;
+          gl_FragColor = vec4(glowColor, alpha);
+        }
+      `,
       uniforms: {
         time: { value: 0.0 },
         glowColor: { value: new THREE.Color(0x00ffcc) },
@@ -104,50 +159,114 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       depthWrite: false,
     });
 
-    // --- Procedural Hand ---
-    const handGroup = new THREE.Group();
+    const beamGeo = new THREE.CylinderGeometry(1.2, 0.4, 3.5, 32, 1, true);
+    const lightBeam = new THREE.Mesh(beamGeo, beamMaterial);
+    lightBeam.position.y = -1.25;
+    scene.add(lightBeam);
 
-    // Palm
-    const palmGeo = new THREE.CylinderGeometry(1.0, 0.7, 2.0, 32, 16);
-    const palm = new THREE.Mesh(palmGeo, hologramMaterial);
-    palm.scale.set(1.1, 1.0, 0.4);
-    handGroup.add(palm);
+    // --- Load Hand Model (GLB) ---
+    const loader = new GLTFLoader();
+    let loadedHand: THREE.Group | null = null;
+    let handMixer: THREE.AnimationMixer | null = null;
+    let handAnimations: THREE.AnimationClip[] = [];
 
-    // Helper function for fingers
-    const addFinger = (
-      x: number,
-      y: number,
-      z: number,
-      len: number,
-      rad: number,
-      rotZ: number
-    ) => {
-      const finger = new THREE.Mesh(
-        new THREE.CylinderGeometry(rad * 0.7, rad, len, 16, 8),
+    // Fallback procedural hand
+    const createProceduralHand = () => {
+      const handGroup = new THREE.Group();
+
+      const palm = new THREE.Mesh(
+        new THREE.SphereGeometry(1.2, 20, 14),
         hologramMaterial
       );
-      finger.position.set(x, y + len / 2, z);
-      finger.rotation.z = rotZ;
-      handGroup.add(finger);
-      return finger;
+      palm.scale.set(1.1, 1.3, 0.6);
+      palm.position.set(0, -0.5, 0);
+      handGroup.add(palm);
+
+      const fingerData = [
+        { x: -0.8, y: 0.3, len: 1.8, rad: 0.22 },
+        { x: -0.25, y: 0.5, len: 2.0, rad: 0.24 },
+        { x: 0.3, y: 0.4, len: 1.8, rad: 0.22 },
+        { x: 0.75, y: 0.2, len: 1.4, rad: 0.2 },
+      ];
+
+      fingerData.forEach((finger) => {
+        const mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(finger.rad, finger.rad, finger.len, 12),
+          hologramMaterial
+        );
+        mesh.position.set(finger.x, finger.y + finger.len / 2, 0);
+        handGroup.add(mesh);
+      });
+
+      const thumb = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.2, 0.2, 1.2, 12),
+        hologramMaterial
+      );
+      thumb.position.set(-1.3, -0.3, 0.2);
+      thumb.rotation.z = -0.8;
+      handGroup.add(thumb);
+
+      handGroup.position.y = 0;
+      scene.add(handGroup);
+      loadedHand = handGroup;
+      console.log("Using procedural hand fallback");
     };
 
-    // Create fingers
-    const fingers = [
-      addFinger(-0.9, 0.4, 0.0, 1.2, 0.16, -0.2), // Index
-      addFinger(-0.3, 0.8, 0.0, 1.4, 0.16, -0.05), // Middle
-      addFinger(0.3, 0.7, 0.0, 1.3, 0.15, 0.05), // Ring
-      addFinger(0.8, 0.3, 0.0, 1.0, 0.13, 0.2), // Pinky
-      addFinger(0.9, -0.5, 0.1, 0.9, 0.18, 0.7), // Thumb
-    ];
+    loader.load(
+      "/Hand.glb",
+      (gltf) => {
+        loadedHand = gltf.scene;
+        loadedHand.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.material = hologramMaterial;
+          }
+        });
 
-    scene.add(handGroup);
-    handGroup.position.y = -0.5;
+        // Scale and position adjustments
+        loadedHand.scale.setScalar(1);
+        loadedHand.position.set(0, 0, 0);
+        loadedHand.rotation.y = Math.PI;
+        loadedHand.rotation.x = -0.2;
 
-    // --- Animation ---
+        // Center the hand by computing bounding box
+        const box = new THREE.Box3().setFromObject(loadedHand);
+        const center = box.getCenter(new THREE.Vector3());
+        loadedHand.position.sub(center);
+        loadedHand.position.y += 0;
+
+        // Store animations
+        handAnimations = gltf.animations || [];
+        if (handAnimations.length > 0) {
+          handMixer = new THREE.AnimationMixer(loadedHand);
+          console.log(`Found ${handAnimations.length} animations`);
+        }
+
+        scene.add(loadedHand);
+        console.log("Hand model loaded successfully");
+      },
+      (xhr) => {
+        console.log(
+          `Loading hand: ${((xhr.loaded / xhr.total) * 100).toFixed(0)}%`
+        );
+      },
+      (error) => {
+        console.error("Error loading hand model:", error);
+        createProceduralHand();
+      }
+    );
+
+    // --- Animation State Machine ---
     const clock = new THREE.Clock();
     const startTime = performance.now();
     const totalSplashTime = 11000;
+
+    // Animation phases
+    const PHASE_RENDER = 0; // 0-2s: Hand materializes
+    const PHASE_OPEN = 1; // 2-4s: Hand open, floating
+    const PHASE_CLOSE_FIST = 2; // 4-6s: Hand closes into fist
+    const PHASE_FIST_HOLD = 3; // 6-8s: Fist held
+    const PHASE_FIST_BUMP = 4; // 8-9.5s: Fist bumps toward screen
+    const PHASE_FADE_OUT = 5; // 9.5-11s: Fade out
 
     let completed = false;
     let fadeOutTimer: ReturnType<typeof setTimeout> | null = null;
@@ -161,6 +280,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       }, 1000);
     };
 
+    // Track fist closure for procedural animation
+    let fistClosure = 0;
+
     const animate = () => {
       const elapsed = clock.getElapsedTime();
       const splashElapsed = performance.now() - startTime;
@@ -173,31 +295,155 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         return;
       }
 
-      // Update shader time
       hologramMaterial.uniforms.time.value = elapsed;
+      beamMaterial.uniforms.time.value = elapsed;
 
-      // Holographic rotation and floating
-      handGroup.rotation.y = elapsed * 0.5;
-      handGroup.rotation.z = Math.sin(elapsed * 1.5) * 0.1;
-      handGroup.position.y = -0.5 + Math.sin(elapsed * 2.0) * 0.15;
+      // Determine current phase
+      let phase: number;
+      if (splashElapsed < 2000) phase = PHASE_RENDER;
+      else if (splashElapsed < 4000) phase = PHASE_OPEN;
+      else if (splashElapsed < 6000) phase = PHASE_CLOSE_FIST;
+      else if (splashElapsed < 8000) phase = PHASE_FIST_HOLD;
+      else if (splashElapsed < 9500) phase = PHASE_FIST_BUMP;
+      else phase = PHASE_FADE_OUT;
 
-      // Subtle wave motion for fingers
-      fingers.forEach((finger, index) => {
-        const phase = index * 0.4;
-        finger.rotation.z += Math.sin(elapsed * 2.0 + phase) * 0.02;
-      });
+      // Animate loaded hand based on phase
+      if (loadedHand) {
+        // Update mixer if available
+        if (handMixer) {
+          handMixer.update(clock.getDelta());
+        }
 
-      // Rotate stars
+        switch (phase) {
+          case PHASE_RENDER:
+            // Materialize: scale from 0 to 1
+            const renderProgress = splashElapsed / 2000;
+            const renderEased = easeOutBack(renderProgress);
+            loadedHand.scale.setScalar(renderEased);
+            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.1;
+            loadedHand.rotation.y = elapsed * 0.3;
+            break;
+
+          case PHASE_OPEN:
+            // Open hand floating
+            loadedHand.scale.setScalar(1);
+            loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.12;
+            loadedHand.rotation.y += 0.004;
+            loadedHand.rotation.x = -0.2 + Math.sin(elapsed * 0.8) * 0.05;
+            fistClosure = 0;
+            break;
+
+          case PHASE_CLOSE_FIST:
+            // Close into fist
+            const closeProgress = (splashElapsed - 4000) / 2000;
+            fistClosure = easeInOutCubic(closeProgress);
+            
+            // Apply fist closure to fingers
+            applyFistClosure(fistClosure);
+            
+            loadedHand.position.y = Math.sin(elapsed * 1.8) * 0.12;
+            loadedHand.rotation.y += 0.002;
+            break;
+
+          case PHASE_FIST_HOLD:
+            // Hold fist
+            fistClosure = 1;
+            applyFistClosure(1);
+            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            break;
+
+          case PHASE_FIST_BUMP:
+            // Fist bump toward screen
+            const bumpProgress = (splashElapsed - 8000) / 1500;
+            const bumpEased = easeOutCubic(bumpProgress);
+            
+            // Move hand toward camera (increased Z)
+            loadedHand.position.z = bumpEased * 3;
+            loadedHand.scale.setScalar(1 + bumpEased * 0.5);
+            
+            // Slight rotation for impact
+            loadedHand.rotation.x = -0.2 + bumpEased * 0.3;
+            
+            fistClosure = 1;
+            applyFistClosure(1);
+            
+            // Impact flash
+            const impactIntensity = bumpProgress > 0.7 ? (bumpProgress - 0.7) / 0.3 : 0;
+            hologramMaterial.uniforms.glowColor.value.setHSL(
+              0.45 + impactIntensity * 0.1,
+              1,
+              0.5 + impactIntensity * 0.3
+            );
+            break;
+
+          case PHASE_FADE_OUT:
+            // Fade out
+            loadedHand.position.z = 3;
+            loadedHand.scale.setScalar(1.5);
+            fistClosure = 1;
+            applyFistClosure(1);
+            break;
+        }
+      }
+
+      // Pod animation
+      innerRing.rotation.z = elapsed * 0.5;
+      middleRing.rotation.z = -elapsed * 0.3;
+      outerRing.rotation.z = elapsed * 0.1;
+
+      // Beam pulse
+      lightBeam.scale.x = 1.0 + Math.sin(elapsed * 10.0) * 0.02;
+      lightBeam.scale.z = 1.0 + Math.sin(elapsed * 10.0) * 0.02;
+
+      // Stars
       stars.rotation.y += 0.0005;
 
-      // Slow camera orbit
+      // Camera
       const camAngle = elapsed * 0.15;
-      camera.position.x = Math.sin(camAngle) * 2;
-      camera.position.z = 6 + Math.cos(camAngle) * 1;
+      camera.position.x = Math.sin(camAngle) * 1.5;
+      camera.position.z = 8 + Math.cos(camAngle) * 0.5;
       camera.lookAt(0, 0, 0);
 
       renderer.render(scene, camera);
     };
+
+    // Helper: Apply fist closure to procedural hand bones
+    const applyFistClosure = (amount: number) => {
+      if (!loadedHand) return;
+
+      // Try to find finger bones in the model
+      loadedHand.traverse((child) => {
+        if (child instanceof THREE.Bone) {
+          const name = child.name.toLowerCase();
+          if (name.includes("finger") || name.includes("thumb") || name.includes("index") || 
+              name.includes("middle") || name.includes("ring") || name.includes("pinky")) {
+            // Apply rotation based on bone type
+            if (name.includes("thumb")) {
+              child.rotation.x = amount * 0.8;
+              child.rotation.z = -amount * 0.6;
+            } else {
+              child.rotation.z = amount * 1.2;
+              child.rotation.x = amount * 0.4;
+            }
+          }
+        }
+      });
+    };
+
+    // Easing functions
+    function easeOutBack(t: number): number {
+      const c1 = 1.70158;
+      const c3 = c1 + 1;
+      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    }
+
+    function easeInOutCubic(t: number): number {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function easeOutCubic(t: number): number {
+      return 1 - Math.pow(1 - t, 3);
+    }
 
     renderer.setAnimationLoop(animate);
 
@@ -284,7 +530,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           />
         </div>
         <p style={{ fontSize: "12px", textTransform: "uppercase" }}>
-          Loading World…
+          Initializing Hologram…
         </p>
       </div>
       <button
