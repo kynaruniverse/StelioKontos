@@ -13,19 +13,24 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
-  
+
     // --- Scene setup ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#111327");
-  
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      100
+    );
     camera.position.set(0, 0, 20);
-  
+
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     mount.appendChild(renderer.domElement);
-  
+
     // --- Lights ---
     const ambient = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambient);
@@ -35,7 +40,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     const pointLight = new THREE.PointLight(0xf25d4d, 1, 30);
     pointLight.position.set(-5, 0, 5);
     scene.add(pointLight);
-  
+
     // --- Stars background ---
     const starsGeometry = new THREE.BufferGeometry();
     const starsCount = 800;
@@ -45,29 +50,53 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       starsPositions[i + 1] = (Math.random() - 0.5) * 50;
       starsPositions[i + 2] = (Math.random() - 0.5) * 50;
     }
-    starsGeometry.setAttribute("position", new THREE.BufferAttribute(starsPositions, 3));
-    const starsMaterial = new THREE.PointsMaterial({ color: 0xf5edd9, size: 0.05, transparent: true, opacity: 0.8 });
+    starsGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(starsPositions, 3)
+    );
+    const starsMaterial = new THREE.PointsMaterial({
+      color: 0xf5edd9,
+      size: 0.05,
+      transparent: true,
+      opacity: 0.8,
+    });
     const stars = new THREE.Points(starsGeometry, starsMaterial);
     scene.add(stars);
-  
+
     // --- Grid floor ---
     const gridHelper = new THREE.GridHelper(20, 20, 0xf5d34f, 0x3152c9);
     gridHelper.position.y = -5;
     gridHelper.material.opacity = 0.2;
     gridHelper.material.transparent = true;
     scene.add(gridHelper);
-  
+
     // --- Prepare wordmark canvas but wait for fonts before sampling ---
     const text = "SIDEQUEST";
     const canvas = document.createElement("canvas");
     canvas.width = 1024;
     canvas.height = 256;
     const ctx = canvas.getContext("2d")!;
-  
+
     let animationFrame: number | null = null;
     let completed = false;
     let fadeOutTimer: ReturnType<typeof setTimeout> | null = null;
-  
+
+    // Easing function: easeOutBack
+    function easeOutBack(t: number): number {
+      const c1 = 1.70158;
+      const c3 = c1 + 1;
+      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    }
+
+    const fadeOut = () => {
+      if (fadeRef.current) {
+        fadeRef.current.classList.add("splash-fade-out");
+      }
+      fadeOutTimer = setTimeout(() => {
+        onComplete();
+      }, 1000);
+    };
+
     const startAnimation = () => {
       // Draw text after fonts are ready
       ctx.fillStyle = "#000";
@@ -77,12 +106,17 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-  
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+      const imageData = ctx.getImageData(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      ).data;
       const targetPositions: THREE.Vector3[] = [];
       const samplingStep = 6;
       const scale = 0.02;
-  
+
       for (let y = 0; y < canvas.height; y += samplingStep) {
         for (let x = 0; x < canvas.width; x += samplingStep) {
           const alpha = imageData[(y * canvas.width + x) * 4 + 3];
@@ -93,21 +127,44 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           }
         }
       }
-  
+
       const geometry = new THREE.BoxGeometry(0.12, 0.12, 0.12);
       const materials = [
-        new THREE.MeshStandardMaterial({ color: 0xf5edd9, roughness: 0.3, metalness: 0.2, emissive: 0x222222 }),
-        new THREE.MeshStandardMaterial({ color: 0xf25d4d, roughness: 0.3, metalness: 0.2, emissive: 0x330000 }),
-        new THREE.MeshStandardMaterial({ color: 0xf5d34f, roughness: 0.3, metalness: 0.2, emissive: 0x332200 }),
-        new THREE.MeshStandardMaterial({ color: 0x3152c9, roughness: 0.3, metalness: 0.2, emissive: 0x001133 }),
+        new THREE.MeshStandardMaterial({
+          color: 0xf5edd9,
+          roughness: 0.3,
+          metalness: 0.2,
+          emissive: 0x222222,
+        }),
+        new THREE.MeshStandardMaterial({
+          color: 0xf25d4d,
+          roughness: 0.3,
+          metalness: 0.2,
+          emissive: 0x330000,
+        }),
+        new THREE.MeshStandardMaterial({
+          color: 0xf5d34f,
+          roughness: 0.3,
+          metalness: 0.2,
+          emissive: 0x332200,
+        }),
+        new THREE.MeshStandardMaterial({
+          color: 0x3152c9,
+          roughness: 0.3,
+          metalness: 0.2,
+          emissive: 0x001133,
+        }),
       ];
-  
+
       const particles: THREE.Mesh[] = [];
       const initialPositions: THREE.Vector3[] = [];
       const initialRotations: THREE.Euler[] = [];
-  
+
       for (let i = 0; i < targetPositions.length; i++) {
-        const mesh = new THREE.Mesh(geometry, materials[Math.floor(Math.random() * materials.length)]);
+        const mesh = new THREE.Mesh(
+          geometry,
+          materials[Math.floor(Math.random() * materials.length)]
+        );
         const radius = 8;
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.acos(2 * Math.random() - 1);
@@ -116,23 +173,27 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         const iy = r * Math.sin(phi) * Math.sin(theta);
         const iz = r * Math.cos(phi);
         mesh.position.set(ix, iy, iz);
-        mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        mesh.rotation.set(
+          Math.random() * Math.PI,
+          Math.random() * Math.PI,
+          Math.random() * Math.PI
+        );
         mesh.scale.setScalar(0.5 + Math.random() * 0.5);
         particles.push(mesh);
         initialPositions.push(mesh.position.clone());
         initialRotations.push(mesh.rotation.clone());
         scene.add(mesh);
       }
-  
+
       const startTime = performance.now();
       const assembleDuration = 8000;
       const holdDuration = 5000;
       const totalDuration = assembleDuration + holdDuration;
       const totalSplashTime = 15000;
-  
+
       const animate = (now: number) => {
         const elapsed = now - startTime;
-  
+
         if (elapsed >= totalSplashTime) {
           if (!completed) {
             completed = true;
@@ -140,10 +201,10 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           }
           return;
         }
-  
+
         const progress = Math.min(elapsed / assembleDuration, 1);
         const eased = easeOutBack(progress);
-  
+
         particles.forEach((particle, i) => {
           const target = targetPositions[i];
           if (!target) return;
@@ -151,55 +212,46 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           particle.position.x = init.x + (target.x - init.x) * eased;
           particle.position.y = init.y + (target.y - init.y) * eased;
           particle.position.z = init.z + (target.z - init.z) * eased;
-  
+
           const initRot = initialRotations[i];
           particle.rotation.x = initRot.x * (1 - eased);
           particle.rotation.y = initRot.y * (1 - eased);
           particle.rotation.z = initRot.z * (1 - eased);
-  
+
           particle.scale.setScalar(0.5 + eased * 0.5);
         });
-  
+
         if (progress >= 1 && elapsed < totalDuration) {
           const holdProgress = (elapsed - assembleDuration) / holdDuration;
           const pulse = 1 + Math.sin(holdProgress * Math.PI * 2) * 0.03;
           particles.forEach((p) => p.scale.setScalar(1 * pulse));
         }
-  
+
         const camAngle = (elapsed / totalSplashTime) * 0.2;
         camera.position.x = Math.sin(camAngle) * 5;
         camera.position.z = 20 + Math.cos(camAngle) * 2;
         camera.lookAt(0, 0, 0);
-  
+
         stars.rotation.y += 0.0002;
-  
+
         renderer.render(scene, camera);
       };
-  
+
       renderer.setAnimationLoop(animate);
     };
-  
-    const fadeOut = () => {
-      if (fadeRef.current) {
-        fadeRef.current.classList.add("splash-fade-out");
-      }
-      fadeOutTimer = setTimeout(() => {
-        onComplete();
-      }, 1000);
-    };
-  
+
     const handleResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
     window.addEventListener("resize", handleResize);
-  
+
     skipRef.current?.focus();
-  
+
     // Wait for fonts, then start the animation
     document.fonts.ready.then(startAnimation);
-  
+
     // Cleanup
     return () => {
       renderer.setAnimationLoop(null);
@@ -210,7 +262,11 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         mount.removeChild(renderer.domElement);
       }
       scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh || obj instanceof THREE.Points || obj instanceof THREE.Line) {
+        if (
+          obj instanceof THREE.Mesh ||
+          obj instanceof THREE.Points ||
+          obj instanceof THREE.Line
+        ) {
           obj.geometry.dispose();
           if (Array.isArray(obj.material)) {
             obj.material.forEach((m) => m.dispose());
@@ -234,22 +290,48 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       aria-modal="true"
       aria-label="Loading Sidequest world"
       style={{
-        position: "fixed", inset: 0, zIndex: 100, background: "#111327" }}>
+        position: "fixed",
+        inset: 0,
+        zIndex: 100,
+        background: "#111327",
+      }}
+    >
       <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />
-      <div className="splash-overlay" style={{
-        position: "absolute",
-        bottom: "10%",
-        left: "50%",
-        transform: "translateX(-50%)",
-        textAlign: "center",
-        color: "#f5edd9",
-        fontFamily: "'Space Mono', monospace",
-        letterSpacing: "0.1em",
-      }}>
-        <div className="splash-progress-bar" style={{ width: "200px", height: "4px", background: "rgba(255,255,255,0.2)", margin: "0 auto 10px" }}>
-          <div className="splash-progress-fill" style={{ width: "0%", height: "100%", background: "#f5d34f", animation: "splash-progress 15s linear forwards" }} />
+      <div
+        className="splash-overlay"
+        style={{
+          position: "absolute",
+          bottom: "10%",
+          left: "50%",
+          transform: "translateX(-50%)",
+          textAlign: "center",
+          color: "#f5edd9",
+          fontFamily: "'Space Mono', monospace",
+          letterSpacing: "0.1em",
+        }}
+      >
+        <div
+          className="splash-progress-bar"
+          style={{
+            width: "200px",
+            height: "4px",
+            background: "rgba(255,255,255,0.2)",
+            margin: "0 auto 10px",
+          }}
+        >
+          <div
+            className="splash-progress-fill"
+            style={{
+              width: "0%",
+              height: "100%",
+              background: "#f5d34f",
+              animation: "splash-progress 15s linear forwards",
+            }}
+          />
         </div>
-        <p style={{ fontSize: "12px", textTransform: "uppercase" }}>Loading World…</p>
+        <p style={{ fontSize: "12px", textTransform: "uppercase" }}>
+          Loading World…
+        </p>
       </div>
       <button
         ref={skipRef}
@@ -265,7 +347,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           fontFamily: "'Space Mono', monospace",
           fontSize: "10px",
           letterSpacing: "0.1em",
-          textTransform:  "uppercase",
+          textTransform: "uppercase",
           cursor: "pointer",
           transition: "background 0.3s",
         }}
@@ -275,8 +357,12 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             fadeOut();
           }
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.2)")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+        onMouseEnter={(e) =>
+          (e.currentTarget.style.background = "rgba(255,255,255,0.2)")
+        }
+        onMouseLeave={(e) =>
+          (e.currentTarget.style.background = "rgba(255,255,255,0.1)")
+        }
       >
         Skip
       </button>
