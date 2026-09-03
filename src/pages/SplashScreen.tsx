@@ -189,6 +189,102 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     particleMesh.instanceMatrix.needsUpdate = true;
     scene.add(particleMesh);
 
+    // --- Middle-Finger Extension Burst / Aura ---
+    // A single Points draw call provides the burst particles. The effect stays
+    // hidden until the middle finger reaches its fully extended pose.
+    const burstCount = 180;
+    const burstPositions = new Float32Array(burstCount * 3);
+    const burstDirections = new Float32Array(burstCount * 3);
+    const burstSeeds = new Float32Array(burstCount);
+
+    for (let i = 0; i < burstCount; i++) {
+      const offset = i * 3;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      burstDirections[offset] = Math.sin(phi) * Math.cos(theta);
+      burstDirections[offset + 1] = Math.sin(phi) * Math.sin(theta);
+      burstDirections[offset + 2] = Math.cos(phi);
+      burstSeeds[i] = 0.65 + Math.random() * 0.7;
+      burstPositions[offset] = 0;
+      burstPositions[offset + 1] = 0;
+      burstPositions[offset + 2] = 0;
+    }
+
+    const burstGeometry = new THREE.BufferGeometry();
+    const burstPositionAttribute = new THREE.BufferAttribute(
+      burstPositions,
+      3
+    );
+    burstGeometry.setAttribute("position", burstPositionAttribute);
+
+    const burstMaterial = new THREE.PointsMaterial({
+      color: 0x9ffff0,
+      size: 0.075,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+    const burstParticles = new THREE.Points(burstGeometry, burstMaterial);
+    burstParticles.visible = false;
+    burstParticles.frustumCulled = false;
+    scene.add(burstParticles);
+
+    const auraGeometry = new THREE.SphereGeometry(0.72, 24, 16);
+    const auraMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffcc,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const fingerAura = new THREE.Mesh(auraGeometry, auraMaterial);
+    fingerAura.visible = false;
+    scene.add(fingerAura);
+
+    let fingerBurstStarted = false;
+    let fingerBurstProgress = 0;
+    const burstOrigin = new THREE.Vector3();
+
+    const triggerMiddleFingerBurst = () => {
+      if (fingerBurstStarted || !loadedHand) return;
+
+      fingerBurstStarted = true;
+      burstOrigin.set(0, 0, 0);
+      loadedHand.localToWorld(burstOrigin);
+      burstParticles.position.copy(burstOrigin);
+      fingerAura.position.copy(burstOrigin);
+      burstParticles.visible = true;
+      fingerAura.visible = true;
+    };
+
+    const updateMiddleFingerBurst = (progress: number) => {
+      if (!fingerBurstStarted) return;
+
+      fingerBurstProgress = THREE.MathUtils.clamp(progress, 0, 1);
+      const burstEased = easeOutCubic(fingerBurstProgress);
+      const burstFade = 1 - fingerBurstProgress;
+
+      for (let i = 0; i < burstCount; i++) {
+        const offset = i * 3;
+        const distance = burstEased * 3.2 * burstSeeds[i];
+        burstPositions[offset] = burstDirections[offset] * distance;
+        burstPositions[offset + 1] = burstDirections[offset + 1] * distance;
+        burstPositions[offset + 2] = burstDirections[offset + 2] * distance;
+      }
+      burstPositionAttribute.needsUpdate = true;
+      burstMaterial.opacity = 0.9 * burstFade;
+      burstMaterial.size = 0.045 + burstFade * 0.055;
+
+      const auraScale = 0.8 + burstEased * 3.5;
+      fingerAura.scale.setScalar(auraScale);
+      auraMaterial.opacity = 0.42 * burstFade;
+      fingerAura.rotation.y += 0.035;
+      fingerAura.rotation.x += 0.02;
+    };
+
     // --- Animation State ---
     const clock = new THREE.Clock();
     const startTime = performance.now();
@@ -356,7 +452,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       rig: HandRig,
       progress: number
     ) => {
-      const eased = easeInOutCubic(THREE.MathUtils.clamp(progress, 0, 1));
+      const eased = heavyFistEase(progress);
       applyHandPose(rig, [eased, eased, eased, eased], eased, true);
     };
 
@@ -365,9 +461,43 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         ? 4 * value * value * value
         : 1 - Math.pow(-2 * value + 2, 3) / 2;
 
+    const setHandScale = (value: number) => {
+      if (loadedHand && loadedHand.scale.x !== value) {
+        loadedHand.scale.setScalar(value);
+      }
+    };
+
+    // A deliberately weighted closure curve: a short hesitation, a firm
+    // acceleration through the middle, and a slower final settle. This makes
+    // the fist feel like it has mass instead of snapping shut.
+    const heavyFistEase = (value: number): number => {
+      const t = THREE.MathUtils.clamp(value, 0, 1);
+
+      if (t < 0.12) {
+        const anticipation = t / 0.12;
+        return 0.025 * anticipation * anticipation;
+      }
+
+      if (t < 0.86) {
+        const mainProgress = (t - 0.12) / 0.74;
+        return THREE.MathUtils.lerp(
+          0.025,
+          0.93,
+          easeInOutCubic(mainProgress)
+        );
+      }
+
+      const settleProgress = (t - 0.86) / 0.14;
+      return THREE.MathUtils.lerp(
+        0.93,
+        1,
+        1 - Math.pow(1 - settleProgress, 3)
+      );
+    };
+
     const getPhase = (splashElapsed: number): number => {
       if (splashElapsed < 4000) return PHASE_PARTICLES;
-      if (splashElapsed < 6000) return PHASE_CLOSE_FIST;
+      if (splashElapsed < 6400) return PHASE_CLOSE_FIST;
       if (splashElapsed < 8000) return PHASE_TURN_FIST;
       if (splashElapsed < 9000) return PHASE_EXTEND_THUMB;
       if (splashElapsed < 10000) return PHASE_EXTEND_MIDDLE;
@@ -545,7 +675,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       if (loadedHand && loadedHand.visible) {
         switch (phase) {
           case PHASE_CLOSE_FIST: {
-            // 4–6s: close the open palm into a tight fist.
+            // 4–6.4s: deliberately close the open palm into a tight fist.
             loadedHand.rotation.y = handForwardYaw;
             loadedHand.rotation.x = 0.3;
             loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
@@ -553,7 +683,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             setHandScale(3);
 
             fistAnimationProgress = THREE.MathUtils.clamp(
-              (splashElapsed - 4000) / 2000,
+              (splashElapsed - 4000) / 2400,
               0,
               1
             );
@@ -564,13 +694,13 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           }
 
           case PHASE_TURN_FIST: {
-            // 6–8s: keep the fist tight while turning it exactly 180 degrees.
+            // 6.4–8s: keep the fist tight while turning it exactly 180 degrees.
             if (handRig) {
               applyProceduralFistPose(handRig, 1);
             }
 
             const turnProgress = THREE.MathUtils.clamp(
-              (splashElapsed - 6000) / 2000,
+              (splashElapsed - 6400) / 1600,
               0,
               1
             );
@@ -618,6 +748,10 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
                 0,
                 false
               );
+
+              if (middleEased >= 0.98) {
+                triggerMiddleFingerBurst();
+              }
             }
 
             loadedHand.rotation.y = handForwardYaw + Math.PI;
@@ -625,6 +759,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
             loadedHand.position.z = 0;
             setHandScale(3);
+            updateMiddleFingerBurst(
+              THREE.MathUtils.clamp((splashElapsed - 9900) / 1100, 0, 1)
+            );
             break;
           }
 
@@ -639,6 +776,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             loadedHand.rotation.x = 0.8;
             loadedHand.rotation.y = handForwardYaw + Math.PI;
             hologramMaterial.emissiveIntensity = 0.3;
+            updateMiddleFingerBurst(
+              THREE.MathUtils.clamp((splashElapsed - 9900) / 1100, 0, 1)
+            );
             break;
           }
         }
