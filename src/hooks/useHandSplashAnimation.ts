@@ -1,0 +1,867 @@
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
+interface UseHandSplashAnimationOptions {
+  onComplete: () => void;
+  mountRef: React.RefObject<HTMLDivElement | null>;
+  fadeRef: React.RefObject<HTMLDivElement | null>;
+}
+
+export function useHandSplashAnimation({
+  onComplete,
+  mountRef,
+  fadeRef,
+}: UseHandSplashAnimationOptions) {
+  const [loadError, setLoadError] = useState(false);
+  const [skip, setSkip] = useState<() => void>(() => () => {});
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    // --- Scene setup ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#050b14");
+
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    camera.position.set(0, 1.5, 8);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    mount.appendChild(renderer.domElement);
+
+    // --- Hologram Material (standard for skinning support) ---
+    const hologramMaterial = new THREE.MeshStandardMaterial({
+      color: 0x00ffcc,
+      emissive: 0x00ffcc,
+      emissiveIntensity: 0.8,
+      transparent: true,
+      opacity: 0.6,
+      roughness: 0.3,
+      metalness: 0.1,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+
+    // --- Stars background ---
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsCount = 600;
+    const starsPositions = new Float32Array(starsCount * 3);
+    for (let i = 0; i < starsCount * 3; i += 3) {
+      starsPositions[i] = (Math.random() - 0.5) * 40;
+      starsPositions[i + 1] = (Math.random() - 0.5) * 40;
+      starsPositions[i + 2] = (Math.random() - 0.5) * 40;
+    }
+    starsGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(starsPositions, 3)
+    );
+    const starsMaterial = new THREE.PointsMaterial({
+      color: 0x00ffcc,
+      size: 0.03,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending,
+    });
+    const stars = new THREE.Points(starsGeometry, starsMaterial);
+    scene.add(stars);
+
+    // --- Projection Pod ---
+    const podGroup = new THREE.Group();
+    podGroup.position.y = -3;
+
+    const podBaseGeo = new THREE.CylinderGeometry(1.5, 1.7, 0.2, 32);
+    const podBase = new THREE.Mesh(podBaseGeo, hologramMaterial);
+    podGroup.add(podBase);
+
+    const createGridRing = (radius: number, segments: number) => {
+      const ringGeo = new THREE.RingGeometry(radius - 0.02, radius, segments);
+      const ring = new THREE.Mesh(ringGeo, hologramMaterial);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.11;
+      return ring;
+    };
+
+    const innerRing = createGridRing(0.6, 32);
+    const middleRing = createGridRing(1.0, 48);
+    const outerRing = createGridRing(1.4, 64);
+    podGroup.add(innerRing, middleRing, outerRing);
+
+    scene.add(podGroup);
+
+    // --- Volumetric Light Beam ---
+    const beamMaterial = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec2 vUv;
+        varying float vHeight;
+        void main() {
+          vUv = uv;
+          vHeight = position.y;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 glowColor;
+        uniform float time;
+        varying vec2 vUv;
+        varying float vHeight;
+        void main() {
+          float horizontalGlow = sin(vUv.x * 3.14159);
+          float verticalFade = 1.0 - (vHeight + 1.5) / 3.5;
+          float upwardPulse = sin(vHeight * 4.0 - time * 8.0) * 0.15 + 0.85;
+          float alpha = horizontalGlow * verticalFade * upwardPulse * 0.3;
+          gl_FragColor = vec4(glowColor, alpha);
+        }
+      `,
+      uniforms: {
+        time: { value: 0.0 },
+        glowColor: { value: new THREE.Color(0x00ffcc) },
+      },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+
+    const beamGeo = new THREE.CylinderGeometry(1.2, 0.4, 3.5, 32, 1, true);
+    const lightBeam = new THREE.Mesh(beamGeo, beamMaterial);
+    lightBeam.position.y = -1.25;
+    scene.add(lightBeam);
+
+    // --- Instanced Particle Assembly System ---
+    const particleTargets: THREE.Vector3[] = [];
+    const particleInitialPositions: THREE.Vector3[] = [];
+    const particleInitialRotations: THREE.Euler[] = [];
+    const particleCount = 800;
+
+    const particleGeometry = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+    const particleMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffcc,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+
+    const particleMesh = new THREE.InstancedMesh(
+      particleGeometry,
+      particleMaterial,
+      particleCount
+    );
+    particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    particleMesh.frustumCulled = false;
+
+    const particleTransform = new THREE.Object3D();
+    const particleInitialScales: number[] = [];
+
+    for (let i = 0; i < particleCount; i++) {
+      const radius = 15;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const r = radius * Math.cbrt(Math.random());
+      const position = new THREE.Vector3(
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.sin(phi) * Math.sin(theta),
+        r * Math.cos(phi)
+      );
+      const rotation = new THREE.Euler(
+        Math.random() * Math.PI,
+        Math.random() * Math.PI,
+        Math.random() * Math.PI
+      );
+      const scale = 0.5 + Math.random() * 0.5;
+
+      particleInitialPositions.push(position);
+      particleInitialRotations.push(rotation);
+      particleInitialScales.push(scale);
+
+      particleTransform.position.copy(position);
+      particleTransform.rotation.copy(rotation);
+      particleTransform.scale.setScalar(scale);
+      particleTransform.updateMatrix();
+      particleMesh.setMatrixAt(i, particleTransform.matrix);
+    }
+
+    particleMesh.instanceMatrix.needsUpdate = true;
+    scene.add(particleMesh);
+
+    // --- Middle-Finger Extension Burst / Aura ---
+    const burstCount = 180;
+    const burstPositions = new Float32Array(burstCount * 3);
+    const burstDirections = new Float32Array(burstCount * 3);
+    const burstSeeds = new Float32Array(burstCount);
+
+    for (let i = 0; i < burstCount; i++) {
+      const offset = i * 3;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      burstDirections[offset] = Math.sin(phi) * Math.cos(theta);
+      burstDirections[offset + 1] = Math.sin(phi) * Math.sin(theta);
+      burstDirections[offset + 2] = Math.cos(phi);
+      burstSeeds[i] = 0.65 + Math.random() * 0.7;
+      burstPositions[offset] = 0;
+      burstPositions[offset + 1] = 0;
+      burstPositions[offset + 2] = 0;
+    }
+
+    const burstGeometry = new THREE.BufferGeometry();
+    const burstPositionAttribute = new THREE.BufferAttribute(
+      burstPositions,
+      3
+    );
+    burstGeometry.setAttribute("position", burstPositionAttribute);
+
+    const burstMaterial = new THREE.PointsMaterial({
+      color: 0x9ffff0,
+      size: 0.075,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+    const burstParticles = new THREE.Points(burstGeometry, burstMaterial);
+    burstParticles.visible = false;
+    burstParticles.frustumCulled = false;
+    scene.add(burstParticles);
+
+    const auraGeometry = new THREE.SphereGeometry(0.72, 24, 16);
+    const auraMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffcc,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const fingerAura = new THREE.Mesh(auraGeometry, auraMaterial);
+    fingerAura.visible = false;
+    scene.add(fingerAura);
+
+    let fingerBurstStarted = false;
+    let fingerBurstProgress = 0;
+    const burstOrigin = new THREE.Vector3();
+
+    let completed = false;
+    let fadeOutTimer: ReturnType<typeof setTimeout> | null = null;
+    let handRevealed = false;
+    let loadedHand: THREE.Group | null = null;
+    let handCenteredPosition: THREE.Vector3 | null = null;
+    let isMounted = true;
+
+    const triggerMiddleFingerBurst = () => {
+      if (fingerBurstStarted || !loadedHand) return;
+
+      fingerBurstStarted = true;
+      burstOrigin.set(0, 0, 0);
+      loadedHand.localToWorld(burstOrigin);
+      burstParticles.position.copy(burstOrigin);
+      fingerAura.position.copy(burstOrigin);
+      burstParticles.visible = true;
+      fingerAura.visible = true;
+    };
+
+    const updateMiddleFingerBurst = (progress: number) => {
+      if (!fingerBurstStarted) return;
+
+      fingerBurstProgress = THREE.MathUtils.clamp(progress, 0, 1);
+      const burstEased = easeOutCubic(fingerBurstProgress);
+      const burstFade = 1 - fingerBurstProgress;
+
+      for (let i = 0; i < burstCount; i++) {
+        const offset = i * 3;
+        const distance = burstEased * 3.2 * burstSeeds[i];
+        burstPositions[offset] = burstDirections[offset] * distance;
+        burstPositions[offset + 1] = burstDirections[offset + 1] * distance;
+        burstPositions[offset + 2] = burstDirections[offset + 2] * distance;
+      }
+      burstPositionAttribute.needsUpdate = true;
+      burstMaterial.opacity = 0.9 * burstFade;
+      burstMaterial.size = 0.045 + burstFade * 0.055;
+
+      const auraScale = 0.8 + burstEased * 3.5;
+      fingerAura.scale.setScalar(auraScale);
+      auraMaterial.opacity = 0.42 * burstFade;
+      fingerAura.rotation.y += 0.035;
+      fingerAura.rotation.x += 0.02;
+    };
+
+    // --- Animation State ---
+    const clock = new THREE.Clock();
+    const startTime = performance.now();
+    const totalSplashTime = 12000;
+
+    const PHASE_PARTICLES = 0;
+    const PHASE_CLOSE_FIST = 1;
+    const PHASE_TURN_FIST = 2;
+    const PHASE_EXTEND_THUMB = 3;
+    const PHASE_EXTEND_MIDDLE = 4;
+    const PHASE_FADE_OUT = 5;
+
+    type ProceduralBone = {
+      bone: THREE.Bone;
+      open: THREE.Quaternion;
+      closed: THREE.Quaternion;
+    };
+
+    type HandRig = {
+      fingers: ProceduralBone[][];
+      thumb: ProceduralBone[];
+    };
+
+    let handRig: HandRig | null = null;
+    let fistAnimationProgress = 0;
+    let gestureProgress = 0;
+
+    const handFacingOffset = Math.PI / 2;
+    const handForwardYaw = handFacingOffset;
+
+    const makeProceduralBone = (
+      bone: THREE.Bone,
+      curlRadians: number
+    ): ProceduralBone => {
+      const open = bone.quaternion.clone();
+      const curlRotation = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(curlRadians, 0, 0)
+      );
+      const closed = open.clone().multiply(curlRotation);
+      return { bone, open, closed };
+    };
+
+    const createHandRig = (hand: THREE.Group): HandRig => {
+      const findBone = (name: string): THREE.Bone => {
+        const object = hand.getObjectByName(name);
+        if (!(object instanceof THREE.Bone)) {
+          throw new Error(`Required hand bone not found: ${name}`);
+        }
+        return object;
+      };
+
+      const chain = (
+        names: string[],
+        curlRadians: number
+      ): ProceduralBone[] =>
+        names.map((name, index) =>
+          makeProceduralBone(
+            findBone(name),
+            curlRadians * (1 - index * 0.08)
+          )
+        );
+
+      return {
+        fingers: [
+          chain(
+            [
+              "Finger_Index1_04",
+              "Finger_Index2_05",
+              "Finger_Index3_06",
+            ],
+            1.05
+          ),
+          chain(
+            [
+              "Finger_Middle1_08",
+              "Finger_Middle2_09",
+              "Finger_Middle3_010",
+            ],
+            1.12
+          ),
+          chain(
+            [
+              "Finger_Ring1_012",
+              "Finger_Ring2_013",
+              "Finger_Ring3_014",
+            ],
+            1.18
+          ),
+          chain(
+            [
+              "Finger_Pinky1_016",
+              "Finger_Pinky2_017",
+              "Finger_Pinky3_018",
+            ],
+            1.24
+          ),
+        ],
+        thumb: [
+          makeProceduralBone(findBone("Finger_Thumb1_020"), -0.75),
+          makeProceduralBone(findBone("Finger_Thumb2_021"), -0.85),
+          makeProceduralBone(findBone("Finger_Thumb3_022"), -0.55),
+        ],
+      };
+    };
+
+    const applyHandPose = (
+      rig: HandRig,
+      fingerCurls: number[],
+      thumbCurl: number,
+      staggered = false
+    ) => {
+      rig.fingers.forEach((finger, fingerIndex) => {
+        const rawCurl = THREE.MathUtils.clamp(
+          fingerCurls[fingerIndex] ?? 0,
+          0,
+          1
+        );
+        const fingerCurl = staggered
+          ? THREE.MathUtils.clamp(
+              (rawCurl - fingerIndex * 0.045) /
+                (1 - fingerIndex * 0.045),
+              0,
+              1
+            )
+          : rawCurl;
+
+        finger.forEach((joint, jointIndex) => {
+          const jointProgress = THREE.MathUtils.clamp(
+            fingerCurl * (1.04 - jointIndex * 0.04),
+            0,
+            1
+          );
+          joint.bone.quaternion.slerpQuaternions(
+            joint.open,
+            joint.closed,
+            jointProgress
+          );
+        });
+      });
+
+      const clampedThumbCurl = THREE.MathUtils.clamp(thumbCurl, 0, 1);
+      rig.thumb.forEach((joint, jointIndex) => {
+        const jointProgress = THREE.MathUtils.clamp(
+          clampedThumbCurl * (1.05 - jointIndex * 0.08),
+          0,
+          1
+        );
+        joint.bone.quaternion.slerpQuaternions(
+          joint.open,
+          joint.closed,
+          jointProgress
+        );
+      });
+    };
+
+    const applyProceduralFistPose = (
+      rig: HandRig,
+      progress: number
+    ) => {
+      const eased = heavyFistEase(progress);
+      applyHandPose(rig, [eased, eased, eased, eased], eased, true);
+    };
+
+    const easeInOutCubic = (value: number): number =>
+      value < 0.5
+        ? 4 * value * value * value
+        : 1 - Math.pow(-2 * value + 2, 3) / 2;
+
+    const setHandScale = (value: number) => {
+      if (loadedHand && loadedHand.scale.x !== value) {
+        loadedHand.scale.setScalar(value);
+      }
+    };
+
+    const heavyFistEase = (value: number): number => {
+      const t = THREE.MathUtils.clamp(value, 0, 1);
+
+      if (t < 0.12) {
+        const anticipation = t / 0.12;
+        return 0.025 * anticipation * anticipation;
+      }
+
+      if (t < 0.86) {
+        const mainProgress = (t - 0.12) / 0.74;
+        return THREE.MathUtils.lerp(
+          0.025,
+          0.93,
+          easeInOutCubic(mainProgress)
+        );
+      }
+
+      const settleProgress = (t - 0.86) / 0.14;
+      return THREE.MathUtils.lerp(
+        0.93,
+        1,
+        1 - Math.pow(1 - settleProgress, 3)
+      );
+    };
+
+    const getPhase = (splashElapsed: number): number => {
+      if (splashElapsed < 4000) return PHASE_PARTICLES;
+      if (splashElapsed < 6400) return PHASE_CLOSE_FIST;
+      if (splashElapsed < 8000) return PHASE_TURN_FIST;
+      if (splashElapsed < 9000) return PHASE_EXTEND_THUMB;
+      if (splashElapsed < 10000) return PHASE_EXTEND_MIDDLE;
+      return PHASE_FADE_OUT;
+    };
+
+    const revealHand = () => {
+      if (!isMounted || handRevealed || !loadedHand) return;
+
+      handRevealed = true;
+      particleMesh.visible = false;
+
+      loadedHand.visible = true;
+      loadedHand.scale.setScalar(3);
+      if (handCenteredPosition) {
+        loadedHand.position.copy(handCenteredPosition);
+      } else {
+        loadedHand.position.set(0, 0, 0);
+      }
+      loadedHand.rotation.set(-0.2, handForwardYaw, 0);
+      fistAnimationProgress = 0;
+      gestureProgress = 0;
+      if (handRig) {
+        applyHandPose(handRig, [0, 0, 0, 0], 0);
+      }
+    };
+
+    // --- Load Hand Model (GLB) ---
+    const loader = new GLTFLoader();
+
+    loader.load(
+      "/Hand.glb",
+      (gltf) => {
+        if (!isMounted) return;
+
+        loadedHand = gltf.scene;
+
+        loadedHand.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.material = hologramMaterial;
+            child.castShadow = false;
+            child.receiveShadow = false;
+          }
+        });
+
+        setHandScale(3);
+        loadedHand.position.set(0, 0, 0);
+        loadedHand.rotation.set(0.3, handForwardYaw, 0);
+        loadedHand.updateMatrixWorld(true);
+
+        // Center after all initial transforms have been applied.
+        const box = new THREE.Box3().setFromObject(loadedHand);
+        const center = box.getCenter(new THREE.Vector3());
+        loadedHand.position.sub(center);
+        handCenteredPosition = loadedHand.position.clone();
+        loadedHand.updateMatrixWorld(true);
+        loadedHand.visible = false;
+
+        try {
+          handRig = createHandRig(loadedHand);
+          console.log("Procedural hand rig initialized");
+        } catch (error) {
+          console.error("Could not initialize procedural hand rig:", error);
+        }
+
+        // Sample mesh vertices in world space after the final transform.
+        loadedHand.traverse((child) => {
+          if (!(child instanceof THREE.Mesh)) return;
+
+          const positionAttribute = child.geometry.getAttribute("position");
+          if (!positionAttribute) return;
+
+          if (particleTargets.length >= particleCount) return;
+
+          const remaining = particleCount - particleTargets.length;
+          const sampleCount = Math.min(500, remaining);
+          const step = Math.max(
+            1,
+            Math.floor(positionAttribute.count / sampleCount)
+          );
+
+          for (
+            let i = 0;
+            i < positionAttribute.count &&
+            particleTargets.length < particleCount;
+            i += step
+          ) {
+            const vertex = new THREE.Vector3().fromBufferAttribute(
+              positionAttribute,
+              i
+            );
+            child.localToWorld(vertex);
+            particleTargets.push(vertex);
+          }
+        });
+
+        scene.add(loadedHand);
+        console.log(
+          `Hand model loaded; sampled ${particleTargets.length} target points`
+        );
+
+        const splashElapsed = performance.now() - startTime;
+        if (splashElapsed >= 4000) {
+          revealHand();
+        }
+      },
+      undefined,
+      (error) => {
+        if (!isMounted) return;
+        console.error("Error loading hand model:", error);
+        setLoadError(true);
+      }
+    );
+
+    const fadeOut = () => {
+      if (fadeRef.current) {
+        fadeRef.current.classList.add("splash-fade-out");
+      }
+      fadeOutTimer = setTimeout(() => {
+        onCompleteRef.current();
+      }, 1000);
+    };
+
+    const skip = () => {
+      if (!completed) {
+        completed = true;
+        fadeOut();
+      }
+    };
+
+    // Expose skip function to component
+    setSkip(() => skip);
+
+    const animate = () => {
+      const delta = clock.getDelta();
+      const elapsed = clock.getElapsedTime();
+      const splashElapsed = performance.now() - startTime;
+
+      if (splashElapsed >= totalSplashTime) {
+        if (!completed) {
+          completed = true;
+          fadeOut();
+        }
+        return;
+      }
+
+      beamMaterial.uniforms.time.value = elapsed;
+
+      const phase = getPhase(splashElapsed);
+      const particleProgress = Math.min(splashElapsed / 4000, 1);
+      const particleEased = easeOutCubic(particleProgress);
+
+      if (phase === PHASE_PARTICLES && particleProgress < 1) {
+        const targetCount = Math.min(particleTargets.length, particleCount);
+
+        for (let i = 0; i < targetCount; i++) {
+          const initial = particleInitialPositions[i];
+          const target = particleTargets[i];
+          const initialRotation = particleInitialRotations[i];
+
+          particleTransform.position.lerpVectors(
+            initial,
+            target,
+            particleEased
+          );
+          particleTransform.rotation.set(
+            initialRotation.x * (1 - particleEased),
+            initialRotation.y * (1 - particleEased),
+            initialRotation.z * (1 - particleEased)
+          );
+          particleTransform.scale.setScalar(
+            particleInitialScales[i] + particleEased * 0.5
+          );
+          particleTransform.updateMatrix();
+          particleMesh.setMatrixAt(i, particleTransform.matrix);
+        }
+
+        particleMesh.instanceMatrix.needsUpdate = true;
+      }
+
+      if (splashElapsed >= 4000) {
+        revealHand();
+      }
+
+      if (loadedHand && loadedHand.visible) {
+        switch (phase) {
+          case PHASE_CLOSE_FIST: {
+            loadedHand.rotation.y = handForwardYaw;
+            loadedHand.rotation.x = 0.3;
+            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            loadedHand.position.z = 0;
+            setHandScale(3);
+
+            fistAnimationProgress = THREE.MathUtils.clamp(
+              (splashElapsed - 4000) / 2400,
+              0,
+              1
+            );
+            if (handRig) {
+              applyProceduralFistPose(handRig, fistAnimationProgress);
+            }
+            break;
+          }
+
+          case PHASE_TURN_FIST: {
+            if (handRig) {
+              applyProceduralFistPose(handRig, 1);
+            }
+
+            const turnProgress = THREE.MathUtils.clamp(
+              (splashElapsed - 6400) / 1600,
+              0,
+              1
+            );
+            const turnEased = easeInOutCubic(turnProgress);
+            loadedHand.rotation.y = handForwardYaw + turnEased * Math.PI;
+            loadedHand.rotation.x = 0.3;
+            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            loadedHand.position.z = 0;
+            setHandScale(3);
+            break;
+          }
+
+          case PHASE_EXTEND_THUMB: {
+            if (handRig) {
+              const thumbProgress = THREE.MathUtils.clamp(
+                (splashElapsed - 8000) / 1000,
+                0,
+                1
+              );
+              const thumbEased = easeInOutCubic(thumbProgress);
+              applyHandPose(handRig, [1, 1, 1, 1], 1 - thumbEased);
+            }
+
+            loadedHand.rotation.y = handForwardYaw + Math.PI;
+            loadedHand.rotation.x = 0.3;
+            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            loadedHand.position.z = 0;
+            setHandScale(3);
+            break;
+          }
+
+          case PHASE_EXTEND_MIDDLE: {
+            if (handRig) {
+              const middleProgress = THREE.MathUtils.clamp(
+                (splashElapsed - 9000) / 1000,
+                0,
+                1
+              );
+              const middleEased = easeInOutCubic(middleProgress);
+              applyHandPose(
+                handRig,
+                [1, 1 - middleEased, 1, 1],
+                0,
+                false
+              );
+
+              if (middleEased >= 0.98) {
+                triggerMiddleFingerBurst();
+              }
+            }
+
+            loadedHand.rotation.y = handForwardYaw + Math.PI;
+            loadedHand.rotation.x = 0.3;
+            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
+            loadedHand.position.z = 0;
+            setHandScale(3);
+            updateMiddleFingerBurst(
+              THREE.MathUtils.clamp((splashElapsed - 9900) / 1100, 0, 1)
+            );
+            break;
+          }
+
+          case PHASE_FADE_OUT: {
+            if (handRig) {
+              applyHandPose(handRig, [1, 0, 1, 1], 0, false);
+            }
+
+            loadedHand.position.z = 5;
+            setHandScale(4.5);
+            loadedHand.rotation.x = 0.8;
+            loadedHand.rotation.y = handForwardYaw + Math.PI;
+            hologramMaterial.emissiveIntensity = 0.3;
+            updateMiddleFingerBurst(
+              THREE.MathUtils.clamp((splashElapsed - 9900) / 1100, 0, 1)
+            );
+            break;
+          }
+        }
+      }
+
+      // Pod animation
+      innerRing.rotation.z = elapsed * 0.5;
+      middleRing.rotation.z = -elapsed * 0.3;
+      outerRing.rotation.z = elapsed * 0.1;
+
+      // Beam pulse
+      const beamPulse = 1 + Math.sin(elapsed * 10) * 0.02;
+      lightBeam.scale.x = beamPulse;
+      lightBeam.scale.z = beamPulse;
+
+      // Stars
+      stars.rotation.y += 0.0005;
+
+      // Camera
+      const camAngle = elapsed * 0.15;
+      camera.position.x = Math.sin(camAngle) * 1.5;
+      camera.position.z = 8 + Math.cos(camAngle) * 0.5;
+      camera.lookAt(0, 0, 0);
+
+      renderer.render(scene, camera);
+    };
+
+    function easeOutCubic(t: number): number {
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    renderer.setAnimationLoop(animate);
+
+    const handleResize = () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    };
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      isMounted = false;
+      renderer.setAnimationLoop(null);
+      window.removeEventListener("resize", handleResize);
+
+      if (fadeOutTimer) {
+        clearTimeout(fadeOutTimer);
+      }
+
+      renderer.dispose();
+
+      if (mount.contains(renderer.domElement)) {
+        mount.removeChild(renderer.domElement);
+      }
+
+      const geometries = new Set<THREE.BufferGeometry>();
+      const materials = new Set<THREE.Material>();
+
+      scene.traverse((obj) => {
+        if (
+          obj instanceof THREE.Mesh ||
+          obj instanceof THREE.Points ||
+          obj instanceof THREE.Line
+        ) {
+          geometries.add(obj.geometry);
+
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach((material) => materials.add(material));
+          } else if (obj.material instanceof THREE.Material) {
+            materials.add(obj.material);
+          }
+        }
+      });
+
+      geometries.forEach((geometry) => geometry.dispose());
+      materials.forEach((material) => material.dispose());
+    };
+  }, []);
+
+  return { loadError, skip };
+}
