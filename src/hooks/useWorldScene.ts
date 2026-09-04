@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type React from "react";
 import * as THREE from "three";
 import { WebGPURenderer } from "three/webgpu";
 
@@ -244,9 +245,9 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
 
     const keys: Record<string, keyof ControlState> = { ArrowUp: "forward", w: "forward", ArrowDown: "backward", s: "backward", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" };
     const keyDown = (event: KeyboardEvent) => {
-      onStart();
       const key = keys[event.key];
       if (key) {
+        onStart();
         controls[key] = true;
         event.preventDefault();
       }

@@ -339,6 +339,15 @@ export function useHandSplashAnimation({
     };
 
     const createHandRig = (hand: THREE.Group): HandRig => {
+      // Temporary diagnostic: log all bone names found in the hand
+      const boneNames: string[] = [];
+      hand.traverse((child) => {
+        if (child instanceof THREE.Bone) {
+          boneNames.push(child.name);
+        }
+      });
+      console.log("Available hand bones:", boneNames);
+    
       const findBone = (name: string): THREE.Bone => {
         const object = hand.getObjectByName(name);
         if (!(object instanceof THREE.Bone)) {
@@ -346,60 +355,60 @@ export function useHandSplashAnimation({
         }
         return object;
       };
-
-      const chain = (
-        names: string[],
-        curlRadians: number
-      ): ProceduralBone[] =>
-        names.map((name, index) =>
-          makeProceduralBone(
-            findBone(name),
-            curlRadians * (1 - index * 0.08)
-          )
-        );
-
-      return {
-        fingers: [
-          chain(
-            [
-              "Finger_Index1_04",
-              "Finger_Index2_05",
-              "Finger_Index3_06",
+    
+          const chain = (
+            names: string[],
+            curlRadians: number
+          ): ProceduralBone[] =>
+            names.map((name, index) =>
+              makeProceduralBone(
+                findBone(name),
+                curlRadians * (1 - index * 0.08)
+              )
+            );
+    
+          return {
+            fingers: [
+              chain(
+                [
+                  "Finger_Index1_04",
+                  "Finger_Index2_05",
+                  "Finger_Index3_06",
+                ],
+                1.05
+              ),
+              chain(
+                [
+                  "Finger_Middle1_08",
+                  "Finger_Middle2_09",
+                  "Finger_Middle3_010",
+                ],
+                1.12
+              ),
+              chain(
+                [
+                  "Finger_Ring1_012",
+                  "Finger_Ring2_013",
+                  "Finger_Ring3_014",
+                ],
+                1.18
+              ),
+              chain(
+                [
+                  "Finger_Pinky1_016",
+                  "Finger_Pinky2_017",
+                  "Finger_Pinky3_018",
+                ],
+                1.24
+              ),
             ],
-            1.05
-          ),
-          chain(
-            [
-              "Finger_Middle1_08",
-              "Finger_Middle2_09",
-              "Finger_Middle3_010",
+            thumb: [
+              makeProceduralBone(findBone("Finger_Thumb1_020"), -0.75),
+              makeProceduralBone(findBone("Finger_Thumb2_021"), -0.85),
+              makeProceduralBone(findBone("Finger_Thumb3_022"), -0.55),
             ],
-            1.12
-          ),
-          chain(
-            [
-              "Finger_Ring1_012",
-              "Finger_Ring2_013",
-              "Finger_Ring3_014",
-            ],
-            1.18
-          ),
-          chain(
-            [
-              "Finger_Pinky1_016",
-              "Finger_Pinky2_017",
-              "Finger_Pinky3_018",
-            ],
-            1.24
-          ),
-        ],
-        thumb: [
-          makeProceduralBone(findBone("Finger_Thumb1_020"), -0.75),
-          makeProceduralBone(findBone("Finger_Thumb2_021"), -0.85),
-          makeProceduralBone(findBone("Finger_Thumb3_022"), -0.55),
-        ],
-      };
-    };
+          };
+        };
 
     const applyHandPose = (
       rig: HandRig,
