@@ -23,9 +23,9 @@ export function useHandSplashAnimation({
     const mount = mountRef.current;
     if (!mount) return;
 
-    // --- Simple scene ---
+    // --- Scene setup: clean dark background ---
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#111327"); // dark navy background
+    scene.background = new THREE.Color("#0e0f1a");
 
     const camera = new THREE.PerspectiveCamera(
       50,
@@ -33,27 +33,29 @@ export function useHandSplashAnimation({
       0.1,
       100
     );
-    camera.position.set(0, 1.2, 5);
-    camera.lookAt(0, 0.5, 0);
+    camera.position.set(0, 1.3, 4.5);
+    camera.lookAt(0, 0.6, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     mount.appendChild(renderer.domElement);
 
-    // Lighting
-    const ambient = new THREE.HemisphereLight(0xffffff, 0x222233, 2.2);
+    // --- Lighting ---
+    const ambient = new THREE.HemisphereLight(0xffffff, 0x333344, 2.2);
     scene.add(ambient);
-    const keyLight = new THREE.DirectionalLight(0xffffff, 3);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 3.5);
     keyLight.position.set(2, 3, 4);
     scene.add(keyLight);
+    const rimLight = new THREE.DirectionalLight(0x88aaff, 1.5);
+    rimLight.position.set(-1, 0.5, -2);
+    scene.add(rimLight);
 
-    // Simple material (warm skin tone, no hologram effects)
+    // --- Hand material (warm, non-holographic) ---
     const handMaterial = new THREE.MeshStandardMaterial({
-      color: 0xe0ac69,
-      roughness: 0.6,
+      color: 0xe6b17e,
+      roughness: 0.55,
       metalness: 0.05,
-      flatShading: false,
     });
 
     let completed = false;
@@ -111,12 +113,12 @@ export function useHandSplashAnimation({
           // Index finger
           chain(
             ["Finger_Index1_04", "Finger_Index2_05", "Finger_Index3_06"],
-            0.9
+            1.0
           ),
           // Middle finger
           chain(
             ["Finger_Middle1_08", "Finger_Middle2_09", "Finger_Middle3_010"],
-            0.95
+            1.05
           ),
           // Ring finger
           chain(
@@ -130,16 +132,16 @@ export function useHandSplashAnimation({
           ),
         ],
         thumb: [
-          makeProceduralBone(findBone("Finger_Thumb1_020"), -0.6),
-          makeProceduralBone(findBone("Finger_Thumb2_021"), -0.8),
-          makeProceduralBone(findBone("Finger_Thumb3_022"), -0.5),
+          makeProceduralBone(findBone("Finger_Thumb1_020"), -0.55),
+          makeProceduralBone(findBone("Finger_Thumb2_021"), -0.75),
+          makeProceduralBone(findBone("Finger_Thumb3_022"), -0.45),
         ],
       };
     };
 
     const applyHandPose = (
       rig: HandRig,
-      fingerCurls: number[], // index, middle, ring, pinky
+      fingerCurls: number[], // [index, middle, ring, pinky] 0=extended, 1=fully curled
       thumbCurl: number
     ) => {
       rig.fingers.forEach((finger, fingerIndex) => {
@@ -171,25 +173,32 @@ export function useHandSplashAnimation({
           jointProgress
         );
       });
+
+      // Force skeleton update after changing bone rotations
+      if (loadedHand) {
+        loadedHand.traverse((child) => {
+          if (child instanceof THREE.SkinnedMesh && child.skeleton) {
+            child.skeleton.update();
+          }
+        });
+        loadedHand.updateMatrixWorld(true);
+      }
     };
 
-    // Animation timeline constants (in milliseconds)
-    const PHASE_APPEAR = 0;
-    const PHASE_TRANSITION = 1; // from open to peace sign
-    const PHASE_HOLD = 2;
-    const PHASE_FADE = 3;
-    const TOTAL_DURATION = 7000; // 7 seconds total
-    const APPEAR_DURATION = 1000;
-    const TRANSITION_DURATION = 2000;
-    const HOLD_DURATION = 3000;
-    const FADE_DURATION = 1000;
+    // Animation timeline (in ms)
+    const APPEAR_DURATION = 1200;
+    const TRANSITION_DURATION = 2500;
+    const HOLD_DURATION = 2500;
+    const FADE_DURATION = 800;
+    const TOTAL_DURATION =
+      APPEAR_DURATION + TRANSITION_DURATION + HOLD_DURATION + FADE_DURATION;
 
     const getPhase = (elapsed: number) => {
-      if (elapsed < APPEAR_DURATION) return PHASE_APPEAR;
-      if (elapsed < APPEAR_DURATION + TRANSITION_DURATION) return PHASE_TRANSITION;
+      if (elapsed < APPEAR_DURATION) return 0; // appear
+      if (elapsed < APPEAR_DURATION + TRANSITION_DURATION) return 1; // transition
       if (elapsed < APPEAR_DURATION + TRANSITION_DURATION + HOLD_DURATION)
-        return PHASE_HOLD;
-      return PHASE_FADE;
+        return 2; // hold
+      return 3; // fade
     };
 
     const easeInOutCubic = (t: number) =>
@@ -233,17 +242,17 @@ export function useHandSplashAnimation({
         const center = box.getCenter(new THREE.Vector3());
         loadedHand.position.sub(center);
         handBasePosition = loadedHand.position.clone();
-        loadedHand.updateMatrixWorld(true);
 
-        // Start hidden, will appear in animation
-        loadedHand.visible = true;
-        loadedHand.scale.setScalar(1);
-        loadedHand.rotation.set(-0.2, Math.PI / 2, 0);
+        // Initial rotation: palm facing camera
+        loadedHand.rotation.set(-0.1, Math.PI / 2, 0);
+        loadedHand.scale.setScalar(0.9);
+        loadedHand.updateMatrixWorld(true);
 
         try {
           handRig = createHandRig(loadedHand);
-          // Set initial pose: open hand (all fingers extended, thumb relaxed)
+          // Start fully open
           applyHandPose(handRig, [0, 0, 0, 0], 0);
+          console.log("Hand rig ready for peace sign animation");
         } catch (error) {
           console.error("Could not initialize hand rig:", error);
         }
@@ -272,11 +281,10 @@ export function useHandSplashAnimation({
       }
 
       const phase = getPhase(elapsed);
-      const delta = clock.getDelta();
 
       if (loadedHand && handRig && handBasePosition) {
-        // Gentle floating motion
-        const floatY = Math.sin(elapsed * 0.002) * 0.08;
+        // Subtle floating motion
+        const floatY = Math.sin(elapsed * 0.002) * 0.06;
         loadedHand.position.set(
           handBasePosition.x,
           handBasePosition.y + floatY,
@@ -284,47 +292,54 @@ export function useHandSplashAnimation({
         );
 
         switch (phase) {
-          case PHASE_APPEAR: {
-            // Fade in: scale up slightly
+          case 0: {
+            // Appear: scale up from 0.6 to 0.9, hand open
             const progress = THREE.MathUtils.clamp(elapsed / APPEAR_DURATION, 0, 1);
-            loadedHand.scale.setScalar(0.8 + progress * 0.2);
-            // Open hand
+            loadedHand.scale.setScalar(0.6 + progress * 0.3);
             applyHandPose(handRig, [0, 0, 0, 0], 0);
             break;
           }
-          case PHASE_TRANSITION: {
+          case 1: {
+            // Transition to peace sign: index and middle stay extended,
+            // ring and pinky curl fully, thumb curls a bit.
             const progress = THREE.MathUtils.clamp(
               (elapsed - APPEAR_DURATION) / TRANSITION_DURATION,
               0,
               1
             );
             const eased = easeInOutCubic(progress);
-            // Curl ring and pinky fully, index and middle stay extended,
-            // thumb curls inward a bit
-            applyHandPose(handRig, [0, 0, eased, eased], eased * 0.8);
-            loadedHand.rotation.y = Math.PI / 2 + Math.sin(elapsed * 0.001) * 0.1;
-            break;
-          }
-          case PHASE_HOLD: {
-            // Peace sign held
-            applyHandPose(handRig, [0, 0, 1, 1], 0.8);
-            // Slight rotation to show off the sign
+            applyHandPose(handRig, [0, 0, eased, eased], eased * 0.7);
+            // Slight wrist rotation to show off the sign
             loadedHand.rotation.y =
-              Math.PI / 2 + Math.sin(elapsed * 0.0005) * 0.2;
+              Math.PI / 2 + Math.sin(elapsed * 0.001) * 0.15;
             break;
           }
-          case PHASE_FADE: {
-            const progress = THREE.MathUtils.clamp(
-              (elapsed - APPEAR_DURATION - TRANSITION_DURATION - HOLD_DURATION) /
+          case 2: {
+            // Hold peace sign with a gentle twist
+            applyHandPose(handRig, [0, 0, 1, 1], 0.7);
+            loadedHand.rotation.y =
+              Math.PI / 2 + Math.sin(elapsed * 0.0008) * 0.2;
+            break;
+          }
+          case 3: {
+            // Fade: keep pose, move hand slightly back
+            applyHandPose(handRig, [0, 0, 1, 1], 0.7);
+            const fadeProgress = THREE.MathUtils.clamp(
+              (elapsed - (APPEAR_DURATION + TRANSITION_DURATION + HOLD_DURATION)) /
                 FADE_DURATION,
               0,
               1
             );
-            // Hold pose, fade out by moving camera or scaling? We'll just let CSS fade handle it.
-            applyHandPose(handRig, [0, 0, 1, 1], 0.8);
+            loadedHand.position.z = handBasePosition.z - fadeProgress * 1.2;
             break;
           }
         }
+        // Extra skeleton update after all transforms
+        loadedHand.traverse((child) => {
+          if (child instanceof THREE.SkinnedMesh && child.skeleton) {
+            child.skeleton.update();
+          }
+        });
         loadedHand.updateMatrixWorld(true);
       }
 
@@ -349,7 +364,6 @@ export function useHandSplashAnimation({
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
       }
-      // Dispose geometries/materials
       scene.traverse((obj) => {
         if (obj instanceof THREE.Mesh) {
           obj.geometry.dispose();
