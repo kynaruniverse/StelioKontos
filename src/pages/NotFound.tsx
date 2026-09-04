@@ -1,8 +1,8 @@
 import { Home, AlertTriangle } from "lucide-react";
 import { useLocation } from "wouter";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 
-export default function NotFound() {
+export default memo(function NotFound() {
   const [, setLocation] = useLocation();
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -138,4 +138,4 @@ export default function NotFound() {
       `}</style>
     </div>
   );
-}
+});

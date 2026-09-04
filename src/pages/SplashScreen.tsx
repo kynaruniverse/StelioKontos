@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from "react";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
@@ -10,6 +11,16 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const fadeRef = useRef<HTMLDivElement>(null);
   const skipRef = useRef<HTMLButtonElement>(null);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const [loadError, setLoadError] = useState(false);
+
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Tab") {
+      event.preventDefault();
+      skipRef.current?.focus();
+    }
+  };
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -301,6 +312,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     let fadeOutTimer: ReturnType<typeof setTimeout> | null = null;
     let handRevealed = false;
     let loadedHand: THREE.Group | null = null;
+    let handCenteredPosition: THREE.Vector3 | null = null;
+    let isMounted = true;
 
     type ProceduralBone = {
       bone: THREE.Bone;
@@ -505,14 +518,18 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     };
 
     const revealHand = () => {
-      if (handRevealed || !loadedHand) return;
+      if (!isMounted || handRevealed || !loadedHand) return;
 
       handRevealed = true;
       particleMesh.visible = false;
 
       loadedHand.visible = true;
       loadedHand.scale.setScalar(3);
-      loadedHand.position.set(0, 0, 0);
+      if (handCenteredPosition) {
+        loadedHand.position.copy(handCenteredPosition);
+      } else {
+        loadedHand.position.set(0, 0, 0);
+      }
       loadedHand.rotation.set(-0.2, handForwardYaw, 0);
       fistAnimationProgress = 0;
       gestureProgress = 0;
@@ -527,6 +544,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     loader.load(
       "/Hand.glb",
       (gltf) => {
+        if (!isMounted) return;
+
         loadedHand = gltf.scene;
 
         loadedHand.traverse((child) => {
@@ -546,6 +565,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         const box = new THREE.Box3().setFromObject(loadedHand);
         const center = box.getCenter(new THREE.Vector3());
         loadedHand.position.sub(center);
+        handCenteredPosition = loadedHand.position.clone();
         loadedHand.updateMatrixWorld(true);
         loadedHand.visible = false;
 
@@ -601,18 +621,20 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           revealHand();
         }
       },
-      undefined,
-      (error) => {
-        console.error("Error loading hand model:", error);
-      }
-    );
+        undefined,
+        (error) => {
+          if (!isMounted) return;
+          console.error("Error loading hand model:", error);
+          setLoadError(true);
+        }
+      );
 
     const fadeOut = () => {
       if (fadeRef.current) {
         fadeRef.current.classList.add("splash-fade-out");
       }
       fadeOutTimer = setTimeout(() => {
-        onComplete();
+        onCompleteRef.current();
       }, 1000);
     };
 
@@ -822,6 +844,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     skipRef.current?.focus();
 
     return () => {
+      isMounted = false;
       renderer.setAnimationLoop(null);
       window.removeEventListener("resize", handleResize);
 
@@ -857,7 +880,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       geometries.forEach((geometry) => geometry.dispose());
       materials.forEach((material) => material.dispose());
     };
-  }, [onComplete]);
+  }, []);
 
   return (
     <div
@@ -866,6 +889,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       role="dialog"
       aria-modal="true"
       aria-label="Loading Sidequest world"
+      aria-describedby="splash-loading-text"
+      onKeyDown={handleDialogKeyDown}
       style={{
         position: "fixed",
         inset: 0,
@@ -875,6 +900,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     >
       <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />
       <div
+        id="splash-loading-text"
         className="splash-overlay"
         style={{
           position: "absolute",
@@ -887,28 +913,36 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           letterSpacing: "0.1em",
         }}
       >
-        <div
-          className="splash-progress-bar"
-          style={{
-            width: "200px",
-            height: "4px",
-            background: "rgba(255,255,255,0.2)",
-            margin: "0 auto 10px",
-          }}
-        >
-          <div
-            className="splash-progress-fill"
-            style={{
-              width: "0%",
-              height: "100%",
-              background: "#00ffcc",
-              animation: "splash-progress 12s linear forwards",
-            }}
-          />
-        </div>
-        <p style={{ fontSize: "12px", textTransform: "uppercase" }}>
-          Assembling Hologram…
-        </p>
+        {loadError ? (
+          <p style={{ fontSize: "12px", textTransform: "uppercase", color: "#f25d4d" }}>
+            Hologram failed to load. Press Skip to continue.
+          </p>
+        ) : (
+          <>
+            <div
+              className="splash-progress-bar"
+              style={{
+                width: "200px",
+                height: "4px",
+                background: "rgba(255,255,255,0.2)",
+                margin: "0 auto 10px",
+              }}
+            >
+              <div
+                className="splash-progress-fill"
+                style={{
+                  width: "0%",
+                  height: "100%",
+                  background: "#00ffcc",
+                  animation: "splash-progress 12s linear forwards",
+                }}
+              />
+            </div>
+            <p style={{ fontSize: "12px", textTransform: "uppercase" }}>
+              Assembling Hologram…
+            </p>
+          </>
+        )}
       </div>
       <button
         ref={skipRef}

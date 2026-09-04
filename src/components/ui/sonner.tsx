@@ -1,7 +1,8 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
+import { memo } from "react";
 
-const Toaster = ({ ...props }: ToasterProps) => {
+const Toaster = memo(({ ...props }: ToasterProps) => {
   const { theme } = useTheme();
 
   return (
@@ -18,6 +19,6 @@ const Toaster = ({ ...props }: ToasterProps) => {
       {...props}
     />
   );
-};
+});
 
 export { Toaster };

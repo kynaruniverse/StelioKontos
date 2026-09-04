@@ -24,6 +24,12 @@ class ErrorBoundary extends Component<Props, State> {
     }
   }
 
+  componentDidUpdate(_prevProps: Props, prevState: State) {
+    if (!prevState.hasError && this.state.hasError) {
+      this.headingRef.current?.focus();
+    }
+  }
+
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }

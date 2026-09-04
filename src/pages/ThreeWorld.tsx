@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import * as THREE from "three/webgpu";
+import * as THREE from "three";
+import { WebGPURenderer } from "three/webgpu";
 
 const WORLD_SIZE = 54;
 const MAX_SPEED = 10;
@@ -101,6 +102,7 @@ function addLandmark(group: THREE.Group, landmark: Landmark) {
   beacon.castShadow = true;
   island.add(beacon);
   group.add(island);
+  return beacon;
 }
 
 export default function ThreeWorld() {
@@ -128,8 +130,8 @@ export default function ThreeWorld() {
     const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 150);
     camera.position.set(0, 9, 15);
 
-    let renderer: THREE.WebGPURenderer | THREE.WebGLRenderer;
-    const initRenderer = (r: THREE.WebGPURenderer | THREE.WebGLRenderer) => {
+    let renderer: WebGPURenderer | THREE.WebGLRenderer;
+    const initRenderer = (r: WebGPURenderer | THREE.WebGLRenderer) => {
       r.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
       r.shadowMap.enabled = true;
       r.shadowMap.type = THREE.PCFShadowMap;
@@ -140,15 +142,15 @@ export default function ThreeWorld() {
     };
 
     try {
-      renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: false });
-      (renderer as THREE.WebGPURenderer).init()
+      renderer = new WebGPURenderer({ antialias: true, forceWebGL: false });
+      (renderer as WebGPURenderer).init()
         .then(() => initRenderer(renderer))
         .catch(() => {
-          renderer = new THREE.WebGLRenderer({ antialias: true });
+          renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" });
           initRenderer(renderer);
         });
     } catch (error) {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" });
       initRenderer(renderer);
     }
 
@@ -198,7 +200,11 @@ export default function ThreeWorld() {
       { position: new THREE.Vector3(10, 0, -8), title: "Wander somewhere", label: "WANDER", colour: palette.yellow },
       { position: new THREE.Vector3(9, 0, 10), title: "Play a little", label: "PLAY", colour: palette.blue },
     ];
-    landmarks.forEach((landmark) => addLandmark(world, landmark));
+    const beacons: THREE.Mesh[] = [];
+    landmarks.forEach((landmark) => {
+      const beacon = addLandmark(world, landmark);
+      if (beacon) beacons.push(beacon);
+    });
 
     const obstacles = [
       { x: 2, z: -4, halfX: 3.2, halfZ: 1.4 },
@@ -240,6 +246,7 @@ export default function ThreeWorld() {
     const timer = new THREE.Timer();
     const targetCamera = new THREE.Vector3();
     const lookAhead = new THREE.Vector3();
+    let lastLandmarkCheck = 0;
     const keys: Record<string, keyof ControlState> = { ArrowUp: "forward", w: "forward", ArrowDown: "backward", s: "backward", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" };
     const keyDown = (event: KeyboardEvent) => {
       setStarted(true); // dismiss intro on any key press
@@ -307,7 +314,7 @@ export default function ThreeWorld() {
       setActiveLandmark((current) => current === next ? current : next);
     };
 
-    const animate = (timestamp?: number) => {
+    function animate(timestamp?: number) {
       timer.update(timestamp);
       const delta = Math.min(timer.getDelta(), 0.04);
       elapsedTimeRef.current += delta;
@@ -344,28 +351,22 @@ export default function ThreeWorld() {
         velocity.multiplyScalar(-0.18);
       }
       body.rotation.z = THREE.MathUtils.damp(body.rotation.z, -velocity.x * 0.035, 8, delta);
-      beaconPulse(world, delta);
+      for (const beacon of beacons) {
+        beacon.rotation.y += delta * 2;
+        const scale = 1 + Math.sin(elapsedTimeRef.current * 4) * 0.1;
+        beacon.scale.setScalar(scale);
+      }
       // Subtle uniform look-ahead: reduced from 0.5 to 0.15
       lookAhead.set(velocity.x * 0.15, 0, velocity.z * 0.15);
       targetCamera.set(car.position.x + lookAhead.x, 7.5, car.position.z + 12 + lookAhead.z);
       camera.position.lerp(targetCamera, 1 - Math.pow(0.001, delta));
       camera.lookAt(car.position.x + lookAhead.x, 0.8, car.position.z - 2 + lookAhead.z);
-      checkLandmarks();
+      if (elapsedTimeRef.current - lastLandmarkCheck > 0.5) {
+        checkLandmarks();
+        lastLandmarkCheck = elapsedTimeRef.current;
+      }
       renderer.render(scene, camera);
-    };
-    const beaconPulse = (root: THREE.Group, delta: number) => {
-      root.children.forEach((child) => {
-        if (child instanceof THREE.Group) {
-          child.children.forEach((nested) => {
-            if (nested instanceof THREE.Mesh && nested.geometry instanceof THREE.OctahedronGeometry) {
-              nested.rotation.y += delta * 2;
-              const scale = 1 + Math.sin(elapsedTimeRef.current * 4) * 0.1;
-              nested.scale.setScalar(scale);
-            }
-          });
-        }
-      });
-    };
+    }
 
     return () => {
       if (renderer) renderer.setAnimationLoop(null);
