@@ -257,6 +257,7 @@ export function useHandSplashAnimation({
     let handRevealed = false;
     let loadedHand: THREE.Group | null = null;
     let handCenteredPosition: THREE.Vector3 | null = null;
+    let handBasePosition: THREE.Vector3 | null = null;
     let isMounted = true;
 
     const triggerMiddleFingerBurst = () => {
@@ -522,8 +523,10 @@ export function useHandSplashAnimation({
       loadedHand.visible = true;
       loadedHand.scale.setScalar(3);
       if (handCenteredPosition) {
-        loadedHand.position.copy(handCenteredPosition);
+        handBasePosition = handCenteredPosition.clone();
+        loadedHand.position.copy(handBasePosition);
       } else {
+        handBasePosition = new THREE.Vector3(0, 0, 0);
         loadedHand.position.set(0, 0, 0);
       }
       loadedHand.rotation.set(-0.2, handForwardYaw, 0);
@@ -696,8 +699,13 @@ export function useHandSplashAnimation({
           case PHASE_CLOSE_FIST: {
             loadedHand.rotation.y = handForwardYaw;
             loadedHand.rotation.x = 0.3;
-            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
-            loadedHand.position.z = 0;
+            if (handBasePosition) {
+              loadedHand.position.set(
+                handBasePosition.x,
+                handBasePosition.y + Math.sin(elapsed * 1.5) * 0.08,
+                handBasePosition.z
+              );
+            }
             setHandScale(3);
 
             fistAnimationProgress = THREE.MathUtils.clamp(
@@ -724,8 +732,13 @@ export function useHandSplashAnimation({
             const turnEased = easeInOutCubic(turnProgress);
             loadedHand.rotation.y = handForwardYaw + turnEased * Math.PI;
             loadedHand.rotation.x = 0.3;
-            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
-            loadedHand.position.z = 0;
+            if (handBasePosition) {
+              loadedHand.position.set(
+                handBasePosition.x,
+                handBasePosition.y + Math.sin(elapsed * 1.5) * 0.08,
+                handBasePosition.z
+              );
+            }
             setHandScale(3);
             break;
           }
@@ -743,8 +756,13 @@ export function useHandSplashAnimation({
 
             loadedHand.rotation.y = handForwardYaw + Math.PI;
             loadedHand.rotation.x = 0.3;
-            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
-            loadedHand.position.z = 0;
+            if (handBasePosition) {
+              loadedHand.position.set(
+                handBasePosition.x,
+                handBasePosition.y + Math.sin(elapsed * 1.5) * 0.08,
+                handBasePosition.z
+              );
+            }
             setHandScale(3);
             break;
           }
@@ -771,8 +789,13 @@ export function useHandSplashAnimation({
 
             loadedHand.rotation.y = handForwardYaw + Math.PI;
             loadedHand.rotation.x = 0.3;
-            loadedHand.position.y = Math.sin(elapsed * 1.5) * 0.08;
-            loadedHand.position.z = 0;
+            if (handBasePosition) {
+              loadedHand.position.set(
+                handBasePosition.x,
+                handBasePosition.y + Math.sin(elapsed * 1.5) * 0.08,
+                handBasePosition.z
+              );
+            }
             setHandScale(3);
             updateMiddleFingerBurst(
               THREE.MathUtils.clamp((splashElapsed - 9900) / 1100, 0, 1)
@@ -785,7 +808,13 @@ export function useHandSplashAnimation({
               applyHandPose(handRig, [1, 0, 1, 1], 0, false);
             }
 
-            loadedHand.position.z = 5;
+            if (handBasePosition) {
+              loadedHand.position.set(
+                handBasePosition.x,
+                handBasePosition.y,
+                handBasePosition.z + 5
+              );
+            }
             setHandScale(4.5);
             loadedHand.rotation.x = 0.8;
             loadedHand.rotation.y = handForwardYaw + Math.PI;
@@ -796,6 +825,10 @@ export function useHandSplashAnimation({
             break;
           }
         }
+      }
+
+      if (loadedHand && loadedHand.visible) {
+        loadedHand.updateMatrixWorld(true);
       }
 
       // Pod animation
@@ -813,7 +846,7 @@ export function useHandSplashAnimation({
 
       // Camera
       const camAngle = elapsed * 0.15;
-      camera.position.x = Math.sin(camAngle) * 1.5;
+      camera.position.x = Math.sin(camAngle) * 0.3;
       camera.position.z = 8 + Math.cos(camAngle) * 0.5;
       camera.lookAt(0, 0, 0);
 
