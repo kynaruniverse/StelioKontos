@@ -75,13 +75,13 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
                 style={{
                   width: "0%",
                   height: "100%",
-                  background: "#00ffcc",
-                  animation: "splash-progress 12s linear forwards",
+                  background: "#f5d44f",
+                  animation: "splash-progress 7s linear forwards",
                 }}
               />
             </div>
             <p style={{ fontSize: "12px", textTransform: "uppercase" }}>
-              Assembling Hologram…
+              Preparing gesture…
             </p>
           </>
         )}
