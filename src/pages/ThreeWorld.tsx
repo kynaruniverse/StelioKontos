@@ -1,24 +1,14 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useWorldScene } from "@/hooks/useWorldScene";
-
-type ControlState = {
-  forward: boolean;
-  backward: boolean;
-  left: boolean;
-  right: boolean;
-};
 
 export default function ThreeWorld() {
   const mountRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
+  const handleStart = useCallback(() => setStarted(true), []);
   const { activeLandmark } = useWorldScene({
     mountRef,
-    onStart: () => setStarted(true),
+    onStart: handleStart,
   });
-
-  const press = (control: keyof ControlState, value: boolean) => {
-    window.dispatchEvent(new KeyboardEvent(value ? "keydown" : "keyup", { key: control === "forward" ? "w" : control === "backward" ? "s" : control === "left" ? "a" : "d" }));
-  };
 
   return (
     <main className="three-world-shell">
