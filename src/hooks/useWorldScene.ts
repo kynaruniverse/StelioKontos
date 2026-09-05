@@ -91,22 +91,6 @@ function addKeyboard(group: THREE.Group, x: number, z: number) {
   return keyboard;
 }
 
-function addMonitor(group: THREE.Group, x: number, z: number) {
-  const monitor = new THREE.Group();
-  monitor.position.set(x, 0.5, z);
-  block(monitor, [0, 5.2, 0], [12.2, 7.1, 0.75], palette.ink, 0, 0.08);
-  block(monitor, [0, 5.2, -0.42], [10.9, 5.8, 0.08], palette.monitor, 0, 0.65);
-  for (let i = 0; i < 4; i += 1) block(monitor, [-4.2 + i * 2.6, 6.75, -0.5], [1.8, 0.1, 0.08], i % 2 ? palette.amber : palette.blue, 0, 1);
-  block(monitor, [0, 1.7, 0], [0.55, 3.3, 0.65], palette.ink);
-  block(monitor, [0, 0.15, 0], [5, 0.3, 2.8], palette.ink);
-  const label = labelSprite("SELECTED WORK", "#67c9e8", "#172b46");
-  label.position.set(0, 4.7, -0.55);
-  label.scale.set(3.1, 0.68, 1);
-  monitor.add(label);
-  group.add(monitor);
-  return monitor;
-}
-
 function addMug(group: THREE.Group, x: number, z: number) {
   const mug = new THREE.Group();
   mug.position.set(x, 0.5, z);
@@ -233,7 +217,35 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
 
     const objects = new THREE.Group();
     room.add(objects);
-    addMonitor(objects, 2, -11);
+    const monitor = new THREE.Group();
+    monitor.position.set(2, 0, -11);
+    objects.add(monitor);
+    let isDisposed = false;
+    const assetLoader = new GLTFLoader();
+    assetLoader.load(
+      "/Monitor.glb",
+      (gltf) => {
+        if (isDisposed) return;
+        const asset = gltf.scene;
+        asset.scale.set(12, 8, 5);
+        asset.position.set(0, 0, 0);
+        asset.rotation.y = 0;
+        asset.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            object.castShadow = true;
+            object.receiveShadow = true;
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach((material) => {
+              material.emissive = new THREE.Color(palette.monitor);
+              material.emissiveIntensity = 0.16;
+            });
+          }
+        });
+        monitor.add(asset);
+      },
+      undefined,
+      (error) => console.error("Unable to load Monitor.glb:", error),
+    );
     addKeyboard(objects, 2, -2.3);
     addMug(objects, 15, -7);
     addNotebook(objects, -12, 1.5);
@@ -263,7 +275,6 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     mouse.add(mouseGlow);
     mouse.position.set(0, 0, 11);
     room.add(mouse);
-    let isDisposed = false;
     const mouseLoader = new GLTFLoader();
     mouseLoader.load(
       "/Mouse.glb",
@@ -272,7 +283,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
         const asset = gltf.scene;
         asset.scale.setScalar(2.6);
         asset.position.set(0, 0.06, 0);
-        asset.rotation.y = Math.PI;
+        asset.rotation.y = 0;
         asset.traverse((object) => {
           if (object instanceof THREE.Mesh) {
             object.castShadow = true;
