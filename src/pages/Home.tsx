@@ -13,7 +13,7 @@ export default function Home() {
   return (
     <>
       {/* 3D World lazy-loaded and rendered underneath (initializes early) */}
-      <Suspense
+      {!showSplash && <Suspense
         fallback={
           <div
             style={{
@@ -47,7 +47,7 @@ export default function Home() {
         }
       >
         <ThreeWorld />
-      </Suspense>
+      </Suspense>}
       {/* Splash screen overlay */}
       {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
     </>
