@@ -99,8 +99,9 @@ export function useHandSplashAnimation({
       return bone;
     };
 
-    // The rig's local X axis runs down each finger. We keep each rest pose,
-    // then add a stylized curl around that axis without using GLB animation clips.
+    // This GLB's finger curl is primarily on the local Y axis. We keep each
+    // rest pose, then add a stylized curl around that axis without using GLB
+    // animation clips.
     const makeBonePose = (
       hand: THREE.Group,
       name: string,
@@ -110,7 +111,7 @@ export function useHandSplashAnimation({
       const bone = findBone(hand, name);
       const rest = bone.quaternion.clone();
       const curlRotation = new THREE.Quaternion().setFromEuler(
-        new THREE.Euler(curl * direction, 0, 0),
+        new THREE.Euler(0, curl * direction, 0),
       );
       return { bone, rest, curled: rest.clone().multiply(curlRotation) };
     };
@@ -133,9 +134,9 @@ export function useHandSplashAnimation({
         makeChain(hand, ["Finger_Pinky1_016", "Finger_Pinky2_017", "Finger_Pinky3_018"], 1.3),
       ],
       thumb: [
-        makeBonePose(hand, "Finger_Thumb1_020", 0.55, -1),
-        makeBonePose(hand, "Finger_Thumb2_021", 0.75, -1),
-        makeBonePose(hand, "Finger_Thumb3_022", 0.45, -1),
+        makeBonePose(hand, "Finger_Thumb1_020", 0.95),
+        makeBonePose(hand, "Finger_Thumb2_021", 0.95),
+        makeBonePose(hand, "Finger_Thumb3_022", 0.75),
       ],
     });
 
