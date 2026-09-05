@@ -123,10 +123,30 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         .splash-flash-active {
           animation: splash-flash 110ms steps(2, end) both;
         }
+        .splash-transition-active {
+          animation: splash-transition 700ms cubic-bezier(.2,.8,.2,1) both;
+        }
         @keyframes splash-flash {
           0% { opacity: 0; }
           35% { opacity: 0.78; }
           100% { opacity: 0; }
+        }
+        @keyframes splash-transition {
+          0% {
+            opacity: 0;
+            clip-path: circle(0% at 50% 48%);
+            transform: scale(0.8);
+          }
+          42% {
+            opacity: 0.96;
+            clip-path: circle(72% at 50% 48%);
+            transform: scale(1);
+          }
+          100% {
+            opacity: 0;
+            clip-path: circle(150% at 50% 48%);
+            transform: scale(1.08);
+          }
         }
       `}</style>
     </div>

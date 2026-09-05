@@ -93,6 +93,7 @@ export function useHandSplashAnimation({
     let fadeOutTimer: ReturnType<typeof setTimeout> | null = null;
     let isMounted = true;
     let lastDroppedFinger = 0;
+    let audioContext: AudioContext | null = null;
 
     const findBone = (hand: THREE.Group, name: string): THREE.Object3D => {
       const bone = hand.getObjectByName(name);
@@ -190,9 +191,70 @@ export function useHandSplashAnimation({
       element.classList.add("splash-flash-active");
     };
 
+    const unlockAudio = () => {
+      if (!audioContext) {
+        const AudioContextClass = window.AudioContext ||
+          (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AudioContextClass) audioContext = new AudioContextClass();
+      }
+      if (audioContext?.state === "suspended") void audioContext.resume();
+    };
+
+    const playCountdownTone = (index: number) => {
+      unlockAudio();
+      if (!audioContext) return;
+
+      const now = audioContext.currentTime;
+      const frequencies = [220, 277.18, 329.63, 415.3, 110];
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = index === COUNTDOWN_TOTAL - 1 ? "sine" : "triangle";
+      oscillator.frequency.setValueAtTime(frequencies[index] ?? 220, now);
+      oscillator.frequency.exponentialRampToValueAtTime(
+        (frequencies[index] ?? 220) * 0.72,
+        now + 0.14,
+      );
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(index === COUNTDOWN_TOTAL - 1 ? 0.2 : 0.12, now + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.start(now);
+      oscillator.stop(now + 0.18);
+    };
+
+    const playFinishTone = () => {
+      unlockAudio();
+      if (!audioContext) return;
+      const now = audioContext.currentTime;
+      [220, 329.63, 440].forEach((frequency, index) => {
+        const oscillator = audioContext!.createOscillator();
+        const gain = audioContext!.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = frequency;
+        gain.gain.setValueAtTime(0.0001, now + index * 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.1, now + index * 0.04 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+        oscillator.connect(gain).connect(audioContext!.destination);
+        oscillator.start(now + index * 0.04);
+        oscillator.stop(now + 0.46);
+      });
+    };
+
+    const handleAudioUnlock = () => unlockAudio();
+    window.addEventListener("pointerdown", handleAudioUnlock, { passive: true });
+    window.addEventListener("keydown", handleAudioUnlock, { passive: true });
+
     const fadeOut = () => {
+      playFinishTone();
+      const element = flashRef.current;
+      if (element) {
+        element.style.background = "radial-gradient(circle at 50% 48%, #ffffff 0%, #42e8ff 18%, #9b5cff 48%, #050b14 100%)";
+        element.classList.remove("splash-flash-active");
+        void element.offsetWidth;
+        element.classList.add("splash-transition-active");
+      }
       fadeRef.current?.classList.add("splash-fade-out");
-      fadeOutTimer = setTimeout(() => onCompleteRef.current(), 350);
+      fadeOutTimer = setTimeout(() => onCompleteRef.current(), 700);
     };
 
     const finish = () => {
@@ -301,6 +363,7 @@ export function useHandSplashAnimation({
 
         if (droppedCount > lastDroppedFinger && droppedCount <= COUNTDOWN_TOTAL) {
           flash(droppedCount - 1);
+          playCountdownTone(droppedCount - 1);
           lastDroppedFinger = droppedCount;
         }
 
@@ -335,6 +398,9 @@ export function useHandSplashAnimation({
       isMounted = false;
       renderer.setAnimationLoop(null);
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("pointerdown", handleAudioUnlock);
+      window.removeEventListener("keydown", handleAudioUnlock);
+      audioContext?.close();
       if (fadeOutTimer) clearTimeout(fadeOutTimer);
       renderer.dispose();
       scene.traverse((object) => {
