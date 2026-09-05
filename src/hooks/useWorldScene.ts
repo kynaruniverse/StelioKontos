@@ -262,7 +262,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     const screenContext = screenCanvas.getContext("2d");
     const screenTexture = new THREE.CanvasTexture(screenCanvas);
     screenTexture.colorSpace = THREE.SRGBColorSpace;
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(10.55, 4.4), new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false }));
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(10.95, 4.4), new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false }));
     screen.position.set(0, 5.17, 1.13);
     monitor.add(screen);
     const screenGlow = new THREE.PointLight(palette.amber, 2.5, 9, 2);
