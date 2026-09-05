@@ -56,6 +56,7 @@ export function useHandSplashAnimation({
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
+    const isMobile = window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#0e0f1a");
@@ -69,10 +70,10 @@ export function useHandSplashAnimation({
     camera.position.set(0, 1.3, 4.5);
     camera.lookAt(0, 0.6, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: "low-power" });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 1.25));
     mount.appendChild(renderer.domElement);
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 2.2));

@@ -67,18 +67,22 @@ function labelSprite(text: string, colour = "#e7dfce", background = "#121827") {
 }
 
 function drawCrtScreen(context: CanvasRenderingContext2D, width: number, height: number, status: string, energyActive: boolean, time: number) {
+  const designWidth = 1920;
+  const designHeight = 772;
+  context.save();
+  context.scale(width / designWidth, height / designHeight);
   context.imageSmoothingEnabled = true;
-  const gradient = context.createLinearGradient(0, 0, width, height);
+  const gradient = context.createLinearGradient(0, 0, designWidth, designHeight);
   gradient.addColorStop(0, "#091321");
   gradient.addColorStop(0.55, "#101827");
   gradient.addColorStop(1, "#1d1b27");
   context.fillStyle = gradient;
-  context.fillRect(0, 0, width, height);
+  context.fillRect(0, 0, designWidth, designHeight);
   context.fillStyle = "rgba(239, 174, 103, 0.08)";
-  context.fillRect(0, 0, width, height * 0.42);
+  context.fillRect(0, 0, designWidth, designHeight * 0.42);
   context.strokeStyle = "rgba(103, 201, 232, 0.16)";
   context.lineWidth = 2;
-  for (let y = 0; y < height; y += 8) { context.beginPath(); context.moveTo(0, y); context.lineTo(width, y); context.stroke(); }
+  for (let y = 0; y < designHeight; y += 8) { context.beginPath(); context.moveTo(0, y); context.lineTo(designWidth, y); context.stroke(); }
   context.fillStyle = "#ffc078";
   context.font = "700 52px monospace";
   context.fillText("AFTER HOURS DESKTOP", 84, 86);
@@ -101,6 +105,7 @@ function drawCrtScreen(context: CanvasRenderingContext2D, width: number, height:
   context.fillStyle = "#67c9e8";
   context.fillRect(84, 522, Math.max(180, ((Math.sin(time * 0.7) + 1) * 0.5) * 660), 8);
   if (Math.floor(time * 2) % 2 === 0) { context.fillStyle = "#ffc078"; context.fillRect(84, 578, 20, 32); }
+  context.restore();
 }
 
 function addKeyboard(group: THREE.Group, x: number, z: number) {
@@ -198,6 +203,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     const mount = mountRef.current;
     if (!mount) return;
     const scene = new THREE.Scene();
+    const isMobile = window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
     scene.background = new THREE.Color(palette.room);
     scene.fog = new THREE.Fog(palette.room, 34, 100);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 140);
@@ -205,7 +211,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
 
     let renderer: WebGPURenderer | THREE.WebGLRenderer;
     const resize = () => { if (!renderer) return; const width = mount.clientWidth; const height = Math.max(mount.clientHeight, 1); camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height, false); };
-    const initRenderer = (next: WebGPURenderer | THREE.WebGLRenderer) => { renderer = next; renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.2)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace; mount.appendChild(renderer.domElement); renderer.setAnimationLoop(animate); resize(); };
+    const initRenderer = (next: WebGPURenderer | THREE.WebGLRenderer) => { renderer = next; renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 1.2)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace; mount.appendChild(renderer.domElement); renderer.setAnimationLoop(animate); resize(); };
     try { const webgpu = new WebGPURenderer({ antialias: true, forceWebGL: false }); webgpu.init().then(() => initRenderer(webgpu)).catch(() => initRenderer(new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" }))); } catch { initRenderer(new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" })); }
 
     const ambient = new THREE.HemisphereLight(0x9bb9df, 0x120e16, 1.35);
@@ -213,8 +219,8 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     const moonKey = new THREE.DirectionalLight(0x86a9d8, 2.2);
     moonKey.position.set(-18, 28, 16);
     moonKey.target.position.set(0, 0, -6);
-    moonKey.castShadow = true;
-    moonKey.shadow.mapSize.set(1024, 1024);
+    moonKey.castShadow = !isMobile;
+    moonKey.shadow.mapSize.set(isMobile ? 512 : 1024, isMobile ? 512 : 1024);
     moonKey.shadow.camera.left = -34;
     moonKey.shadow.camera.right = 34;
     moonKey.shadow.camera.top = 34;
@@ -258,14 +264,14 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     monitor.position.set(2, 0, -11);
     objects.add(monitor);
     const screenCanvas = document.createElement("canvas");
-    screenCanvas.width = 1920;
-    screenCanvas.height = 772;
+    screenCanvas.width = isMobile ? 1280 : 1920;
+    screenCanvas.height = isMobile ? 515 : 772;
     const screenContext = screenCanvas.getContext("2d");
     const screenTexture = new THREE.CanvasTexture(screenCanvas);
     screenTexture.colorSpace = THREE.SRGBColorSpace;
     screenTexture.minFilter = THREE.LinearMipmapLinearFilter;
     screenTexture.magFilter = THREE.LinearFilter;
-    screenTexture.anisotropy = 4;
+    screenTexture.anisotropy = isMobile ? 1 : 4;
     screenTexture.generateMipmaps = true;
     const screen = new THREE.Mesh(new THREE.PlaneGeometry(10.95, 4.4), new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false }));
     screen.position.set(0, 5.17, 1.13);
@@ -318,7 +324,8 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     addNotebook(objects, -12, 1.5);
     addFidget(objects, 13, 7);
     addStickyNotes(objects, -18, -7);
-    addLamp(objects, -19, -11);
+    const lamp = addLamp(objects, -19, -11);
+    if (isMobile) lamp.traverse((object) => { if (object instanceof THREE.PointLight) object.castShadow = false; });
 
     const deskObjects: DeskObject[] = [
       { position: new THREE.Vector3(2, 0, -11), title: "Selected work", label: "MONITOR", colour: palette.blue, radius: 6 },
@@ -369,6 +376,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     const elapsed = { current: 0 };
     let lastCheck = 0;
     let lastScreenDraw = -1;
+    let lastRender = 0;
     const keys: Record<string, keyof ControlState> = { ArrowUp: "forward", w: "forward", ArrowDown: "backward", s: "backward", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" };
     const keyDown = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = true; onStart(); event.preventDefault(); } };
     const keyUp = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = false; event.preventDefault(); } };
@@ -431,7 +439,12 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
       camera.position.lerp(targetCamera, 1 - Math.pow(0.001, delta));
       camera.lookAt(mouse.position.x + lookAhead.x, 0, mouse.position.z - 1 + lookAhead.z);
       if (elapsed.current - lastCheck > 0.35) { checkObjects(); lastCheck = elapsed.current; }
-      renderer?.render(scene, camera);
+      const renderTime = timestamp ?? performance.now();
+      const renderInterval = isMobile ? 1000 / 45 : 0;
+      if (!isMobile || renderTime - lastRender >= renderInterval) {
+        lastRender = renderTime;
+        renderer?.render(scene, camera);
+      }
     }
 
     return () => {
