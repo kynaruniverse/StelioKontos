@@ -9,6 +9,41 @@ interface UseHandSplashAnimationOptions {
   fadeRef: React.RefObject<HTMLDivElement | null>;
 }
 
+type BonePose = {
+  bone: THREE.Object3D;
+  rest: THREE.Quaternion;
+  curled: THREE.Quaternion;
+};
+
+type HandRig = {
+  fingers: BonePose[][];
+  thumb: BonePose[];
+};
+
+type HandPose = {
+  fingers: [number, number, number, number];
+  thumb: number;
+};
+
+const MODEL_URL = "/Hand.glb";
+
+const OPEN: HandPose = { fingers: [0, 0, 0, 0], thumb: 0 };
+const PEACE: HandPose = { fingers: [0, 0, 1, 1], thumb: 0.12 };
+const FIST: HandPose = { fingers: [1, 1, 1, 1], thumb: 1 };
+const THUMB_MIDDLE: HandPose = { fingers: [1, 0, 1, 1], thumb: 0 };
+
+const lerpPose = (from: HandPose, to: HandPose, amount: number): HandPose => ({
+  fingers: from.fingers.map((value, index) =>
+    THREE.MathUtils.lerp(value, to.fingers[index], amount),
+  ) as HandPose["fingers"],
+  thumb: THREE.MathUtils.lerp(from.thumb, to.thumb, amount),
+});
+
+const easeInOut = (value: number) =>
+  value < 0.5
+    ? 4 * value * value * value
+    : 1 - Math.pow(-2 * value + 2, 3) / 2;
+
 export function useHandSplashAnimation({
   onComplete,
   mountRef,
@@ -23,7 +58,6 @@ export function useHandSplashAnimation({
     const mount = mountRef.current;
     if (!mount) return;
 
-    // --- Scene setup: clean dark background ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#0e0f1a");
 
@@ -31,19 +65,18 @@ export function useHandSplashAnimation({
       50,
       window.innerWidth / window.innerHeight,
       0.1,
-      100
+      100,
     );
     camera.position.set(0, 1.3, 4.5);
     camera.lookAt(0, 0.6, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     mount.appendChild(renderer.domElement);
 
-    // --- Lighting ---
-    const ambient = new THREE.HemisphereLight(0xffffff, 0x333344, 2.2);
-    scene.add(ambient);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 2.2));
     const keyLight = new THREE.DirectionalLight(0xffffff, 3.5);
     keyLight.position.set(2, 3, 4);
     scene.add(keyLight);
@@ -51,210 +84,131 @@ export function useHandSplashAnimation({
     rimLight.position.set(-1, 0.5, -2);
     scene.add(rimLight);
 
-    // --- Hand material (warm, non-holographic) ---
-    const handMaterial = new THREE.MeshStandardMaterial({
-      color: 0xe6b17e,
-      roughness: 0.55,
-      metalness: 0.05,
-    });
-
+    let loadedHand: THREE.Group | null = null;
+    let handRig: HandRig | null = null;
+    let handBasePosition = new THREE.Vector3();
     let completed = false;
     let fadeOutTimer: ReturnType<typeof setTimeout> | null = null;
-    let loadedHand: THREE.Group | null = null;
-    let handBasePosition: THREE.Vector3 | null = null;
     let isMounted = true;
 
-    // Procedural rig types
-    type ProceduralBone = {
-      bone: THREE.Bone;
-      open: THREE.Quaternion;
-      closed: THREE.Quaternion;
-    };
-    type HandRig = {
-      fingers: ProceduralBone[][];
-      thumb: ProceduralBone[];
-    };
-    let handRig: HandRig | null = null;
-
-    const makeProceduralBone = (
-      bone: THREE.Bone,
-      curlRadians: number
-    ): ProceduralBone => {
-      const open = bone.quaternion.clone();
-      const curlRotation = new THREE.Quaternion().setFromEuler(
-        new THREE.Euler(curlRadians, 0, 0)
-      );
-      const closed = open.clone().multiply(curlRotation);
-      return { bone, open, closed };
-    };
-
-    const createHandRig = (hand: THREE.Group): HandRig => {
-      const findBone = (name: string): THREE.Bone => {
-        const object = hand.getObjectByName(name);
-        if (!(object instanceof THREE.Bone)) {
-          throw new Error(`Required hand bone not found: ${name}`);
-        }
-        return object;
-      };
-
-      const chain = (
-        names: string[],
-        curlRadians: number
-      ): ProceduralBone[] =>
-        names.map((name, index) =>
-          makeProceduralBone(
-            findBone(name),
-            curlRadians * (1 - index * 0.08)
-          )
-        );
-
-      return {
-        fingers: [
-          // Index finger
-          chain(
-            ["Finger_Index1_04", "Finger_Index2_05", "Finger_Index3_06"],
-            1.0
-          ),
-          // Middle finger
-          chain(
-            ["Finger_Middle1_08", "Finger_Middle2_09", "Finger_Middle3_010"],
-            1.05
-          ),
-          // Ring finger
-          chain(
-            ["Finger_Ring1_012", "Finger_Ring2_013", "Finger_Ring3_014"],
-            1.2
-          ),
-          // Pinky finger
-          chain(
-            ["Finger_Pinky1_016", "Finger_Pinky2_017", "Finger_Pinky3_018"],
-            1.3
-          ),
-        ],
-        thumb: [
-          makeProceduralBone(findBone("Finger_Thumb1_020"), -0.55),
-          makeProceduralBone(findBone("Finger_Thumb2_021"), -0.75),
-          makeProceduralBone(findBone("Finger_Thumb3_022"), -0.45),
-        ],
-      };
-    };
-
-    const applyHandPose = (
-      rig: HandRig,
-      fingerCurls: number[], // [index, middle, ring, pinky] 0=extended, 1=fully curled
-      thumbCurl: number
-    ) => {
-      rig.fingers.forEach((finger, fingerIndex) => {
-        const curl = THREE.MathUtils.clamp(fingerCurls[fingerIndex] ?? 0, 0, 1);
-        finger.forEach((joint, jointIndex) => {
-          const jointProgress = THREE.MathUtils.clamp(
-            curl * (1.04 - jointIndex * 0.04),
-            0,
-            1
-          );
-          joint.bone.quaternion.slerpQuaternions(
-            joint.open,
-            joint.closed,
-            jointProgress
-          );
-        });
-      });
-
-      const clampedThumb = THREE.MathUtils.clamp(thumbCurl, 0, 1);
-      rig.thumb.forEach((joint, jointIndex) => {
-        const jointProgress = THREE.MathUtils.clamp(
-          clampedThumb * (1.05 - jointIndex * 0.08),
-          0,
-          1
-        );
-        joint.bone.quaternion.slerpQuaternions(
-          joint.open,
-          joint.closed,
-          jointProgress
-        );
-      });
-
-      // Force skeleton update after changing bone rotations
-      if (loadedHand) {
-        loadedHand.traverse((child) => {
-          if (child instanceof THREE.SkinnedMesh && child.skeleton) {
-            child.skeleton.update();
-          }
-        });
-        loadedHand.updateMatrixWorld(true);
+    const findBone = (hand: THREE.Group, name: string): THREE.Object3D => {
+      const bone = hand.getObjectByName(name);
+      if (!bone || bone.type !== "Bone") {
+        throw new Error(`Required hand bone not found: ${name}`);
       }
+      return bone;
     };
 
-    // Animation timeline (in ms)
-    const APPEAR_DURATION = 1200;
-    const TRANSITION_DURATION = 2500;
-    const HOLD_DURATION = 2500;
-    const FADE_DURATION = 800;
-    const TOTAL_DURATION =
-      APPEAR_DURATION + TRANSITION_DURATION + HOLD_DURATION + FADE_DURATION;
-
-    const getPhase = (elapsed: number) => {
-      if (elapsed < APPEAR_DURATION) return 0; // appear
-      if (elapsed < APPEAR_DURATION + TRANSITION_DURATION) return 1; // transition
-      if (elapsed < APPEAR_DURATION + TRANSITION_DURATION + HOLD_DURATION)
-        return 2; // hold
-      return 3; // fade
+    // The rig's local X axis runs down each finger. We keep each rest pose,
+    // then add a stylized curl around that axis without using GLB animation clips.
+    const makeBonePose = (
+      hand: THREE.Group,
+      name: string,
+      curl: number,
+      direction = 1,
+    ): BonePose => {
+      const bone = findBone(hand, name);
+      const rest = bone.quaternion.clone();
+      const curlRotation = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(curl * direction, 0, 0),
+      );
+      return { bone, rest, curled: rest.clone().multiply(curlRotation) };
     };
 
-    const easeInOutCubic = (t: number) =>
-      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const makeChain = (
+      hand: THREE.Group,
+      names: string[],
+      curl: number,
+      direction = 1,
+    ) =>
+      names.map((name, index) =>
+        makeBonePose(hand, name, curl * (1 - index * 0.08), direction),
+      );
+
+    const createHandRig = (hand: THREE.Group): HandRig => ({
+      fingers: [
+        makeChain(hand, ["Finger_Index1_04", "Finger_Index2_05", "Finger_Index3_06"], 1.0),
+        makeChain(hand, ["Finger_Middle1_08", "Finger_Middle2_09", "Finger_Middle3_010"], 1.05),
+        makeChain(hand, ["Finger_Ring1_012", "Finger_Ring2_013", "Finger_Ring3_014"], 1.2),
+        makeChain(hand, ["Finger_Pinky1_016", "Finger_Pinky2_017", "Finger_Pinky3_018"], 1.3),
+      ],
+      thumb: [
+        makeBonePose(hand, "Finger_Thumb1_020", 0.55, -1),
+        makeBonePose(hand, "Finger_Thumb2_021", 0.75, -1),
+        makeBonePose(hand, "Finger_Thumb3_022", 0.45, -1),
+      ],
+    });
+
+    const applyPose = (rig: HandRig, pose: HandPose) => {
+      rig.fingers.forEach((finger, fingerIndex) => {
+        const curl = THREE.MathUtils.clamp(pose.fingers[fingerIndex], 0, 1);
+        finger.forEach((joint, jointIndex) => {
+          const amount = THREE.MathUtils.clamp(
+            curl * (1.05 - jointIndex * 0.05),
+            0,
+            1,
+          );
+          joint.bone.quaternion.slerpQuaternions(joint.rest, joint.curled, amount);
+        });
+      });
+
+      rig.thumb.forEach((joint, jointIndex) => {
+        const amount = THREE.MathUtils.clamp(
+          pose.thumb * (1.05 - jointIndex * 0.08),
+          0,
+          1,
+        );
+        joint.bone.quaternion.slerpQuaternions(joint.rest, joint.curled, amount);
+      });
+
+      loadedHand?.updateMatrixWorld(true);
+    };
 
     const fadeOut = () => {
-      if (fadeRef.current) {
-        fadeRef.current.classList.add("splash-fade-out");
-      }
-      fadeOutTimer = setTimeout(() => {
-        onCompleteRef.current();
-      }, FADE_DURATION);
+      fadeRef.current?.classList.add("splash-fade-out");
+      fadeOutTimer = setTimeout(() => onCompleteRef.current(), 800);
     };
 
-    const skip = () => {
-      if (!completed) {
-        completed = true;
-        fadeOut();
-      }
+    const finish = () => {
+      if (completed) return;
+      completed = true;
+      fadeOut();
     };
-    setSkip(() => skip);
 
-    // Load hand model
+    const skipAnimation = () => finish();
+    setSkip(() => skipAnimation);
+
     const loader = new GLTFLoader();
     loader.load(
-      "/Hand.glb",
+      MODEL_URL,
       (gltf) => {
         if (!isMounted) return;
 
         loadedHand = gltf.scene;
+
+        // Keep the materials authored in the GLB. The online viewer's black
+        // outline is a viewer effect; there is no outline material in this file.
         loadedHand.traverse((child) => {
           if (child instanceof THREE.Mesh) {
-            child.material = handMaterial;
             child.castShadow = true;
             child.receiveShadow = false;
           }
         });
 
-        // Center the hand
         const box = new THREE.Box3().setFromObject(loadedHand);
         const center = box.getCenter(new THREE.Vector3());
         loadedHand.position.sub(center);
-        handBasePosition = loadedHand.position.clone();
-
-        // Initial rotation: palm facing camera
+        handBasePosition.copy(loadedHand.position);
         loadedHand.rotation.set(-0.1, Math.PI / 2, 0);
         loadedHand.scale.setScalar(0.9);
-        loadedHand.updateMatrixWorld(true);
 
         try {
           handRig = createHandRig(loadedHand);
-          // Start fully open
-          applyHandPose(handRig, [0, 0, 0, 0], 0);
-          console.log("Hand rig ready for peace sign animation");
+          applyPose(handRig, OPEN);
+          console.info("Custom hand gesture rig ready");
         } catch (error) {
-          console.error("Could not initialize hand rig:", error);
+          console.error("Could not initialize custom hand rig:", error);
+          setLoadError(true);
         }
 
         scene.add(loadedHand);
@@ -264,82 +218,62 @@ export function useHandSplashAnimation({
         if (!isMounted) return;
         console.error("Error loading hand model:", error);
         setLoadError(true);
-      }
+      },
     );
 
+    // Custom sequence: open, peace, fist, thumb + middle extension, repeat.
+    const OPEN_DURATION = 1.0;
+    const PEACE_DURATION = 2.0;
+    const FIST_DURATION = 2.75;
+    const EXTENSION_DURATION = 2.0;
+    const TRANSITION_DURATION = 0.9;
+    const CYCLE_DURATION =
+      OPEN_DURATION +
+      PEACE_DURATION +
+      FIST_DURATION +
+      EXTENSION_DURATION;
     const clock = new THREE.Clock();
-    const startTime = performance.now();
 
     const animate = () => {
-      const elapsed = performance.now() - startTime;
-      if (elapsed >= TOTAL_DURATION) {
-        if (!completed) {
-          completed = true;
-          fadeOut();
+      const elapsed = clock.getElapsedTime();
+      const cycleTime = elapsed % CYCLE_DURATION;
+
+      if (loadedHand && handRig) {
+        let pose: HandPose;
+        let flourish = 0;
+
+        if (cycleTime < OPEN_DURATION) {
+          pose = OPEN;
+        } else if (cycleTime < OPEN_DURATION + PEACE_DURATION) {
+          const progress = THREE.MathUtils.clamp(
+            (cycleTime - OPEN_DURATION) / TRANSITION_DURATION,
+            0,
+            1,
+          );
+          pose = lerpPose(OPEN, PEACE, easeInOut(progress));
+          flourish = Math.sin(elapsed * 5) * 0.06;
+        } else if (cycleTime < OPEN_DURATION + PEACE_DURATION + FIST_DURATION) {
+          const fistStart = OPEN_DURATION + PEACE_DURATION;
+          const progress = THREE.MathUtils.clamp(
+            (cycleTime - fistStart) / TRANSITION_DURATION,
+            0,
+            1,
+          );
+          pose = lerpPose(PEACE, FIST, easeInOut(progress));
+        } else {
+          const extensionStart = OPEN_DURATION + PEACE_DURATION + FIST_DURATION;
+          const progress = THREE.MathUtils.clamp(
+            (cycleTime - extensionStart) / TRANSITION_DURATION,
+            0,
+            1,
+          );
+          pose = lerpPose(FIST, THUMB_MIDDLE, easeInOut(progress));
+          flourish = Math.sin(elapsed * 7) * 0.09;
         }
-        return;
-      }
 
-      const phase = getPhase(elapsed);
-
-      if (loadedHand && handRig && handBasePosition) {
-        // Subtle floating motion
-        const floatY = Math.sin(elapsed * 0.002) * 0.06;
-        loadedHand.position.set(
-          handBasePosition.x,
-          handBasePosition.y + floatY,
-          handBasePosition.z
-        );
-
-        switch (phase) {
-          case 0: {
-            // Appear: scale up from 0.6 to 0.9, hand open
-            const progress = THREE.MathUtils.clamp(elapsed / APPEAR_DURATION, 0, 1);
-            loadedHand.scale.setScalar(0.6 + progress * 0.3);
-            applyHandPose(handRig, [0, 0, 0, 0], 0);
-            break;
-          }
-          case 1: {
-            // Transition to peace sign: index and middle stay extended,
-            // ring and pinky curl fully, thumb curls a bit.
-            const progress = THREE.MathUtils.clamp(
-              (elapsed - APPEAR_DURATION) / TRANSITION_DURATION,
-              0,
-              1
-            );
-            const eased = easeInOutCubic(progress);
-            applyHandPose(handRig, [0, 0, eased, eased], eased * 0.7);
-            // Slight wrist rotation to show off the sign
-            loadedHand.rotation.y =
-              Math.PI / 2 + Math.sin(elapsed * 0.001) * 0.15;
-            break;
-          }
-          case 2: {
-            // Hold peace sign with a gentle twist
-            applyHandPose(handRig, [0, 0, 1, 1], 0.7);
-            loadedHand.rotation.y =
-              Math.PI / 2 + Math.sin(elapsed * 0.0008) * 0.2;
-            break;
-          }
-          case 3: {
-            // Fade: keep pose, move hand slightly back
-            applyHandPose(handRig, [0, 0, 1, 1], 0.7);
-            const fadeProgress = THREE.MathUtils.clamp(
-              (elapsed - (APPEAR_DURATION + TRANSITION_DURATION + HOLD_DURATION)) /
-                FADE_DURATION,
-              0,
-              1
-            );
-            loadedHand.position.z = handBasePosition.z - fadeProgress * 1.2;
-            break;
-          }
-        }
-        // Extra skeleton update after all transforms
-        loadedHand.traverse((child) => {
-          if (child instanceof THREE.SkinnedMesh && child.skeleton) {
-            child.skeleton.update();
-          }
-        });
+        applyPose(handRig, pose);
+        loadedHand.rotation.y = Math.PI / 2 + flourish;
+        loadedHand.position.y = handBasePosition.y + Math.sin(elapsed * 2) * 0.06;
         loadedHand.updateMatrixWorld(true);
       }
 
@@ -349,7 +283,7 @@ export function useHandSplashAnimation({
     renderer.setAnimationLoop(animate);
 
     const handleResize = () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.aspect = window.innerWidth / Math.max(window.innerHeight, 1);
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
@@ -361,21 +295,16 @@ export function useHandSplashAnimation({
       window.removeEventListener("resize", handleResize);
       if (fadeOutTimer) clearTimeout(fadeOutTimer);
       renderer.dispose();
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+        }
+      });
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
       }
-      scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          obj.geometry.dispose();
-          if (Array.isArray(obj.material)) {
-            obj.material.forEach((m) => m.dispose());
-          } else {
-            obj.material.dispose();
-          }
-        }
-      });
     };
-  }, []);
+  }, [fadeRef, mountRef]);
 
   return { loadError, skip };
 }
