@@ -72,7 +72,7 @@ export function useHandSplashAnimation({
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     mount.appendChild(renderer.domElement);
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 2.2));
@@ -375,7 +375,7 @@ export function useHandSplashAnimation({
           THREE.MathUtils.lerp(handBasePosition.z + 2.2, handBasePosition.z, introEase),
         );
         loadedHand.scale.setScalar(THREE.MathUtils.lerp(0.32, 0.9, introEase));
-        setHandOpacity(introEase);
+        if (introProgress < 1) setHandOpacity(introEase);
         loadedHand.updateMatrixWorld(true);
 
         if (elapsed >= TOTAL_DURATION) finish();

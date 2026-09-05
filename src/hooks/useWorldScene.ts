@@ -205,7 +205,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
 
     let renderer: WebGPURenderer | THREE.WebGLRenderer;
     const resize = () => { if (!renderer) return; const width = mount.clientWidth; const height = Math.max(mount.clientHeight, 1); camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height, false); };
-    const initRenderer = (next: WebGPURenderer | THREE.WebGLRenderer) => { renderer = next; renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace; mount.appendChild(renderer.domElement); renderer.setAnimationLoop(animate); resize(); };
+    const initRenderer = (next: WebGPURenderer | THREE.WebGLRenderer) => { renderer = next; renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.2)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace; mount.appendChild(renderer.domElement); renderer.setAnimationLoop(animate); resize(); };
     try { const webgpu = new WebGPURenderer({ antialias: true, forceWebGL: false }); webgpu.init().then(() => initRenderer(webgpu)).catch(() => initRenderer(new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" }))); } catch { initRenderer(new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" })); }
 
     const ambient = new THREE.HemisphereLight(0x9bb9df, 0x120e16, 1.35);
@@ -214,7 +214,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     moonKey.position.set(-18, 28, 16);
     moonKey.target.position.set(0, 0, -6);
     moonKey.castShadow = true;
-    moonKey.shadow.mapSize.set(2048, 2048);
+    moonKey.shadow.mapSize.set(1024, 1024);
     moonKey.shadow.camera.left = -34;
     moonKey.shadow.camera.right = 34;
     moonKey.shadow.camera.top = 34;
@@ -285,7 +285,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
         asset.rotation.y = 0;
         asset.traverse((object) => {
           if (object instanceof THREE.Mesh) {
-            object.castShadow = true;
+            object.castShadow = false;
             object.receiveShadow = true;
           }
         });
@@ -368,6 +368,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     const lookAhead = new THREE.Vector3();
     const elapsed = { current: 0 };
     let lastCheck = 0;
+    let lastScreenDraw = -1;
     const keys: Record<string, keyof ControlState> = { ArrowUp: "forward", w: "forward", ArrowDown: "backward", s: "backward", ArrowLeft: "left", a: "left", ArrowRight: "right", d: "right" };
     const keyDown = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = true; onStart(); event.preventDefault(); } };
     const keyUp = (event: KeyboardEvent) => { const key = keys[event.key]; if (key) { controls[key] = false; event.preventDefault(); } };
@@ -417,9 +418,10 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
       const monitorProximity = THREE.MathUtils.clamp(1 - monitorDistance / 10, 0, 1);
       const canDistance = mouse.position.distanceTo(can.position);
       const canProximity = THREE.MathUtils.clamp(1 - canDistance / 5, 0, 1);
-      if (screenContext) {
+      if (screenContext && elapsed.current - lastScreenDraw >= 1 / 12) {
         drawCrtScreen(screenContext, screenCanvas.width, screenCanvas.height, monitorProximity > 0.35 ? "USER DETECTED" : "IDLE / WAITING", canProximity > 0.2, elapsed.current);
         screenTexture.needsUpdate = true;
+        lastScreenDraw = elapsed.current;
       }
       screenGlow.intensity = 2.2 + monitorProximity * 2.4;
       canGlow.intensity = 1.2 + canProximity * 3.5;
