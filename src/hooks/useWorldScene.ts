@@ -102,12 +102,6 @@ function drawCrtScreen(context: CanvasRenderingContext2D, width: number, height:
   if (Math.floor(time * 2) % 2 === 0) { context.fillStyle = "#f0b36b"; context.fillRect(42, 386, 14, 22); }
 }
 
-function addObjectLabel(group: THREE.Group, object: DeskObject) {
-  const label = labelSprite(object.label, "#e7dfce", "#121827");
-  label.position.copy(object.position).add(new THREE.Vector3(0, object.radius + 1.2, 0));
-  group.add(label);
-}
-
 function addKeyboard(group: THREE.Group, x: number, z: number) {
   const keyboard = new THREE.Group();
   keyboard.position.set(x, 0.65, z);
@@ -244,8 +238,8 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     const screenContext = screenCanvas.getContext("2d");
     const screenTexture = new THREE.CanvasTexture(screenCanvas);
     screenTexture.colorSpace = THREE.SRGBColorSpace;
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(10.7, 5.95), new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false }));
-    screen.position.set(0, 5.1, 1.12);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(9.5, 5.0), new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false }));
+    screen.position.set(0, 5.05, 1.13);
     monitor.add(screen);
     const screenGlow = new THREE.PointLight(palette.amber, 2.5, 9, 2);
     screenGlow.position.set(0, 5.1, 0.2);
@@ -305,8 +299,6 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
       { position: new THREE.Vector3(13, 0, 7), title: "Experiments", label: "FIDGET TOY", colour: palette.mint, radius: 3 },
       { position: new THREE.Vector3(-18, 0, -7), title: "Ideas in progress", label: "STICKY NOTES", colour: palette.amber, radius: 3 },
     ];
-    deskObjects.forEach((object) => addObjectLabel(objects, object));
-
     const mouse = new THREE.Group();
     const mouseBody = new THREE.Group();
     mouse.add(mouseBody);
