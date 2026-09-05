@@ -220,6 +220,14 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     const monitor = new THREE.Group();
     monitor.position.set(2, 0, -11);
     objects.add(monitor);
+    const hologramMaterials: THREE.MeshStandardMaterial[] = [];
+    const hologramLines: THREE.LineSegments[] = [];
+    const hologramScan = new THREE.Mesh(
+      new THREE.PlaneGeometry(12.2, 0.09),
+      new THREE.MeshBasicMaterial({ color: palette.blue, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    hologramScan.position.set(0, 0.7, -1.18);
+    monitor.add(hologramScan);
     let isDisposed = false;
     const assetLoader = new GLTFLoader();
     assetLoader.load(
@@ -236,9 +244,22 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
             object.receiveShadow = true;
             const materials = Array.isArray(object.material) ? object.material : [object.material];
             materials.forEach((material) => {
-              material.emissive = new THREE.Color(palette.monitor);
-              material.emissiveIntensity = 0.16;
+              const hologramMaterial = material instanceof THREE.MeshStandardMaterial ? material.clone() : new THREE.MeshStandardMaterial({ color: palette.blue });
+              hologramMaterial.color.setHex(0x72e9e3);
+              hologramMaterial.emissive.setHex(0x19d8d0);
+              hologramMaterial.emissiveIntensity = 1.35;
+              hologramMaterial.transparent = true;
+              hologramMaterial.opacity = 0;
+              hologramMaterial.depthWrite = false;
+              hologramMaterial.side = THREE.DoubleSide;
+              hologramMaterials.push(hologramMaterial);
+              object.material = hologramMaterial;
             });
+            const edgeGeometry = new THREE.EdgesGeometry(object.geometry, 24);
+            const edgeLines = new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: palette.blue, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+            edgeLines.scale.setScalar(1.004);
+            object.add(edgeLines);
+            hologramLines.push(edgeLines);
           }
         });
         monitor.add(asset);
@@ -348,7 +369,22 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
       mouseBody.rotation.z = THREE.MathUtils.damp(mouseBody.rotation.z, -velocity.x * 0.04, 8, delta);
       sensor.material.color.setHex(elapsed.current % 1.8 > 0.9 ? palette.pink : palette.blue);
       mouseGlow.color.setHex(elapsed.current % 1.8 > 0.9 ? palette.pink : palette.blue);
-      monitorGlow.intensity = 7.5 + Math.sin(elapsed.current * 1.5) * 0.6;
+      const monitorDistance = mouse.position.distanceTo(monitor.position);
+      const monitorProximity = THREE.MathUtils.clamp(1 - monitorDistance / 10, 0, 1);
+      const buildProgress = THREE.MathUtils.smoothstep(elapsed.current, 0, 2.4);
+      const flicker = 0.92 + Math.sin(elapsed.current * 31) * 0.035 + Math.sin(elapsed.current * 67) * 0.018;
+      hologramMaterials.forEach((material) => {
+        material.opacity = THREE.MathUtils.clamp((0.23 + monitorProximity * 0.1) * buildProgress * flicker, 0, 0.42);
+        material.emissiveIntensity = 1.15 + monitorProximity * 0.8;
+      });
+      hologramLines.forEach((line) => {
+        const material = line.material as THREE.LineBasicMaterial;
+        material.opacity = THREE.MathUtils.clamp((0.38 + monitorProximity * 0.26) * buildProgress * flicker, 0, 0.78);
+      });
+      hologramScan.position.y = 0.8 + (elapsed.current * 2.6) % 6.5;
+      const scanMaterial = hologramScan.material as THREE.MeshBasicMaterial;
+      scanMaterial.opacity = THREE.MathUtils.clamp((0.42 + monitorProximity * 0.3) * buildProgress * flicker, 0, 0.9);
+      monitorGlow.intensity = 7.5 + monitorProximity * 4 + Math.sin(elapsed.current * 1.5) * 0.6;
       lookAhead.set(velocity.x * 0.35, 0, velocity.z * 0.35);
       targetCamera.set(mouse.position.x + lookAhead.x, 23, mouse.position.z + 23 + lookAhead.z);
       camera.position.lerp(targetCamera, 1 - Math.pow(0.001, delta));
