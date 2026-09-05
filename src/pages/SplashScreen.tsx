@@ -9,12 +9,14 @@ interface SplashScreenProps {
 const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const fadeRef = useRef<HTMLDivElement>(null);
+  const flashRef = useRef<HTMLDivElement>(null);
   const skipRef = useRef<HTMLButtonElement>(null);
 
   const { loadError, skip } = useHandSplashAnimation({
     onComplete,
     mountRef,
     fadeRef,
+    flashRef,
   });
 
   const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -42,6 +44,18 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     >
       <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />
       <div
+        ref={flashRef}
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 2,
+          pointerEvents: "none",
+          opacity: 0,
+          mixBlendMode: "screen",
+        }}
+      />
+      <div
         id="splash-loading-text"
         className="splash-overlay"
         style={{
@@ -53,37 +67,17 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           color: "#f5edd9",
           fontFamily: "'Space Mono', monospace",
           letterSpacing: "0.1em",
+          zIndex: 3,
         }}
       >
         {loadError ? (
           <p style={{ fontSize: "12px", textTransform: "uppercase", color: "#f25d4d" }}>
-            Hologram failed to load. Press Skip to continue.
+            Hand failed to load. Press Skip to continue.
           </p>
         ) : (
-          <>
-            <div
-              className="splash-progress-bar"
-              style={{
-                width: "200px",
-                height: "4px",
-                background: "rgba(255,255,255,0.2)",
-                margin: "0 auto 10px",
-              }}
-            >
-              <div
-                className="splash-progress-fill"
-                style={{
-                  width: "0%",
-                  height: "100%",
-                  background: "#f5d44f",
-                  animation: "splash-progress 7s linear forwards",
-                }}
-              />
-            </div>
-            <p style={{ fontSize: "12px", textTransform: "uppercase" }}>
-              Preparing gesture…
-            </p>
-          </>
+          <p style={{ fontSize: "12px", textTransform: "uppercase" }}>
+            Counting down…
+          </p>
         )}
       </div>
       <button
@@ -93,6 +87,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           position: "absolute",
           top: "20px",
           right: "20px",
+          zIndex: 4,
           background: "rgba(255,255,255,0.1)",
           border: "1px solid rgba(255,255,255,0.3)",
           color: "#f5edd9",
@@ -105,22 +100,18 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           transition: "background 0.3s",
         }}
         onClick={skip}
-        onMouseEnter={(e) =>
-          (e.currentTarget.style.background = "rgba(255,255,255,0.2)")
+        onMouseEnter={(event) =>
+          (event.currentTarget.style.background = "rgba(255,255,255,0.2)")
         }
-        onMouseLeave={(e) =>
-          (e.currentTarget.style.background = "rgba(255,255,255,0.1)")
+        onMouseLeave={(event) =>
+          (event.currentTarget.style.background = "rgba(255,255,255,0.1)")
         }
       >
         Skip
       </button>
       <style>{`
-        @keyframes splash-progress {
-          from { width: 0%; }
-          to { width: 100%; }
-        }
         .splash-screen {
-          transition: opacity 1s ease, visibility 1s ease;
+          transition: opacity 0.35s ease, visibility 0.35s ease;
           opacity: 1;
           visibility: visible;
         }
@@ -128,6 +119,14 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           opacity: 0;
           visibility: hidden;
           pointer-events: none;
+        }
+        .splash-flash-active {
+          animation: splash-flash 110ms steps(2, end) both;
+        }
+        @keyframes splash-flash {
+          0% { opacity: 0; }
+          35% { opacity: 0.78; }
+          100% { opacity: 0; }
         }
       `}</style>
     </div>
