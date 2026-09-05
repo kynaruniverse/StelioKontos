@@ -67,6 +67,7 @@ function labelSprite(text: string, colour = "#e7dfce", background = "#121827") {
 }
 
 function drawCrtScreen(context: CanvasRenderingContext2D, width: number, height: number, status: string, energyActive: boolean, time: number) {
+  context.imageSmoothingEnabled = true;
   const gradient = context.createLinearGradient(0, 0, width, height);
   gradient.addColorStop(0, "#091321");
   gradient.addColorStop(0.55, "#101827");
@@ -75,31 +76,31 @@ function drawCrtScreen(context: CanvasRenderingContext2D, width: number, height:
   context.fillRect(0, 0, width, height);
   context.fillStyle = "rgba(239, 174, 103, 0.08)";
   context.fillRect(0, 0, width, height * 0.42);
-  context.strokeStyle = "rgba(103, 201, 232, 0.13)";
+  context.strokeStyle = "rgba(103, 201, 232, 0.16)";
   context.lineWidth = 2;
   for (let y = 0; y < height; y += 8) { context.beginPath(); context.moveTo(0, y); context.lineTo(width, y); context.stroke(); }
-  context.fillStyle = "#f0b36b";
-  context.font = "700 32px monospace";
-  context.fillText("AFTER HOURS DESKTOP", 42, 58);
-  context.fillStyle = "#e7dfce";
-  context.font = "700 22px monospace";
-  context.fillText("STELIO KONTOS  /  DESIGN • CODE • 3D", 42, 99);
-  context.fillStyle = "#71c7b1";
-  context.font = "600 20px monospace";
-  context.fillText(`SYSTEM STATUS: ${status}`, 42, 151);
-  context.fillStyle = "#e986a8";
-  context.fillText("CURRENT PROJECT: INTERACTIVE DESK WORLD", 42, 187);
-  context.fillStyle = energyActive ? "#f0a45d" : "#67c9e8";
-  context.fillText(energyActive ? "ENERGY SOURCE: DEADLINE JUICE / ACTIVE" : "ENERGY SOURCE: STANDBY", 42, 223);
-  context.fillStyle = "#e7dfce";
-  context.font = "700 24px monospace";
-  context.fillText("[ SELECTED WORK ]   [ PROCESS ]   [ ABOUT ]", 42, 278);
-  context.fillStyle = "rgba(231, 223, 206, 0.72)";
-  context.font = "18px monospace";
-  context.fillText("BUILD STATUS: ALIVE, SOMEHOW", 42, 322);
+  context.fillStyle = "#ffc078";
+  context.font = "700 52px monospace";
+  context.fillText("AFTER HOURS DESKTOP", 84, 86);
+  context.fillStyle = "#fff4df";
+  context.font = "700 34px monospace";
+  context.fillText("STELIO KONTOS  /  DESIGN • CODE • 3D", 84, 143);
+  context.fillStyle = "#8be0c6";
+  context.font = "600 32px monospace";
+  context.fillText(`SYSTEM STATUS: ${status}`, 84, 213);
+  context.fillStyle = "#ff9fbe";
+  context.fillText("CURRENT PROJECT: INTERACTIVE DESK WORLD", 84, 270);
+  context.fillStyle = energyActive ? "#ffc078" : "#8edfff";
+  context.fillText(energyActive ? "ENERGY SOURCE: DEADLINE JUICE / ACTIVE" : "ENERGY SOURCE: STANDBY", 84, 327);
+  context.fillStyle = "#fff4df";
+  context.font = "700 38px monospace";
+  context.fillText("[ SELECTED WORK ]   [ PROCESS ]   [ ABOUT ]", 84, 407);
+  context.fillStyle = "rgba(255, 244, 223, 0.86)";
+  context.font = "28px monospace";
+  context.fillText("BUILD STATUS: ALIVE, SOMEHOW", 84, 472);
   context.fillStyle = "#67c9e8";
-  context.fillRect(42, 348, Math.max(90, ((Math.sin(time * 0.7) + 1) * 0.5) * 330), 5);
-  if (Math.floor(time * 2) % 2 === 0) { context.fillStyle = "#f0b36b"; context.fillRect(42, 386, 14, 22); }
+  context.fillRect(84, 522, Math.max(180, ((Math.sin(time * 0.7) + 1) * 0.5) * 660), 8);
+  if (Math.floor(time * 2) % 2 === 0) { context.fillStyle = "#ffc078"; context.fillRect(84, 578, 20, 32); }
 }
 
 function addKeyboard(group: THREE.Group, x: number, z: number) {
@@ -257,11 +258,15 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     monitor.position.set(2, 0, -11);
     objects.add(monitor);
     const screenCanvas = document.createElement("canvas");
-    screenCanvas.width = 960;
-    screenCanvas.height = 540;
+    screenCanvas.width = 1920;
+    screenCanvas.height = 772;
     const screenContext = screenCanvas.getContext("2d");
     const screenTexture = new THREE.CanvasTexture(screenCanvas);
     screenTexture.colorSpace = THREE.SRGBColorSpace;
+    screenTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    screenTexture.magFilter = THREE.LinearFilter;
+    screenTexture.anisotropy = 4;
+    screenTexture.generateMipmaps = true;
     const screen = new THREE.Mesh(new THREE.PlaneGeometry(10.95, 4.4), new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false }));
     screen.position.set(0, 5.17, 1.13);
     monitor.add(screen);
