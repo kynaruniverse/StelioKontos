@@ -20,7 +20,7 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="dark" storageKey="sidequest-theme">
+      <ThemeProvider defaultTheme="dark" storageKey="signal-garden-theme">
         <TooltipProvider>
           <Toaster />
           <Router />

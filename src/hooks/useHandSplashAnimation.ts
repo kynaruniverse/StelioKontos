@@ -325,7 +325,6 @@ export function useHandSplashAnimation({
     const FINAL_HOLD = 0.5;
     const TOTAL_DURATION = INTRO_DURATION + COUNTDOWN_TOTAL * DROP_INTERVAL + FINAL_HOLD;
     const transitionDuration = 0.28;
-    const clock = new THREE.Clock();
 
     const poseForDroppedCount = (count: number): HandPose => {
       // Order: little, ring, index/pointer, thumb, middle.

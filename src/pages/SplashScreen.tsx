@@ -32,7 +32,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       className="splash-screen"
       role="dialog"
       aria-modal="true"
-      aria-label="Loading Sidequest world"
+      aria-label="Calibrating Signal Garden"
       aria-describedby="splash-loading-text"
       onKeyDown={handleDialogKeyDown}
       style={{

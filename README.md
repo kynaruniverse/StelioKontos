@@ -1,126 +1,54 @@
-# SIDEQUEST
+# SIGNAL GARDEN
 
-A tiny open-web arcade for curious people, small ideas, and playful detours. Explore a low‑poly 3D world, drive around, and find your next direction — no account, no download, just a browser and a direction.
-
----
+An interactive portfolio observatory built around a quiet, nocturnal field of signals. Navigate a floating hover-skiff through orbital rings, antenna towers, signal trails, and three broadcast stations that reveal different parts of the work.
 
 ## Features
 
-- **Interactive 3D World** – Drive a little car around a stylized island with obstacles, landmarks, and hidden pockets of color.
-- **Animated Splash Screen** – A holographic hand assembles from particles, makes a fist, and extends a certain finger before fading out.
-- **Responsive Controls** – Use arrow keys / WASD on desktop, or drag on touch devices.
-- **Accessibility** – Focus management, error boundaries, and reduced-motion support.
-- **Dark Mode** – Toggle between light and dark themes (currently dark by default).
-
----
+- **Interactive 3D Observatory** – Explore a procedural Signal Garden with three stations: Archive, Studio, and Lab.
+- **Hover-Skiff Navigation** – Use arrow keys / WASD on desktop, or drag on touch devices to steer the floating skiff.
+- **Animated Splash Screen** – A holographic hand assembles from particles before fading into the observatory.
+- **Accessibility** – Focus management, error boundaries, responsive layout, and reduced-motion support.
 
 ## Tech Stack
 
-- [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
-- [Three.js](https://threejs.org/) (WebGPU with WebGL fallback)
-- [Vite](https://vitejs.dev/) for bundling and development
-- [Tailwind CSS v4](https://tailwindcss.com/) for styling
-- [Express](https://expressjs.com/) for production serving
-- [Wouter](https://github.com/molefrog/wouter) for lightweight routing
-
----
+- React 19 + TypeScript
+- Three.js with WebGPU and WebGL fallback
+- Vite for bundling
+- Tailwind CSS v4 for styling
+- Express for production serving
+- Wouter for lightweight routing
 
 ## Getting Started
 
-### Prerequisites
-
-- Node.js ≥ 20
-- pnpm (recommended) or npm
-
-### Installation
-
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd <repo-folder>
-
-# Install dependencies
 pnpm install
-```
-
-Development
-
-```bash
 pnpm dev
 ```
 
-Open http://localhost:3000 to view the app.
+Open `http://localhost:3000` to view the app.
 
-Build for Production
-
-```bash
-pnpm build
-```
-
-This creates a dist/ folder with the static site and a production server (dist/index.js).
-
-Run Production Server
-
-```bash
-pnpm start
-```
-
-The server listens on port 3000 by default (configurable via PORT environment variable).
-
----
-
-Available Scripts
-
-Script Description
-dev Start the Vite development server with HMR
-build Build the frontend and bundle the server
-start Run the production server (after building)
-preview Preview the Vite build locally
-check Type-check the entire project (no emit)
-test Run unit tests with Vitest
-format Format all files with Prettier
-
----
-
-Deployment
-
-Vercel
-
-1. Push your code to a Git repository.
-2. Import the project into Vercel.
-3. The vercel.json file already configures SPA fallback and static asset handling.
-
-Self‑hosted / Node
+For a production build:
 
 ```bash
 pnpm build
 pnpm start
 ```
 
-Make sure to set the PORT environment variable if you need a different port.
+## Project Structure
 
----
-
-Project Structure
-
-```
+```text
 ├── public/               # Static assets (favicon, 3D model)
 ├── server/               # Express server for production
-├── src/
-│   ├── components/       # Reusable UI components (ErrorBoundary, ui)
-│   ├── contexts/         # ThemeContext
-│   ├── lib/              # Utility functions
-│   ├── pages/            # Home, SplashScreen, ThreeWorld, NotFound
-│   ├── styles/           # CSS files (base, components, loader, threeworld)
-│   ├── App.tsx           # Main app with routing
-│   ├── index.css         # Global styles
-│   └── main.tsx          # Entry point
-├── index.html            # HTML template
-└── vite.config.ts        # Vite configuration
+└── src/
+    ├── components/       # Reusable components
+    ├── contexts/         # Theme context
+    ├── hooks/             # Splash and Three.js scene logic
+    ├── pages/             # Home, SplashScreen, ThreeWorld, NotFound
+    ├── styles/            # Global and page-level styles
+    ├── App.tsx            # Main app with routing
+    └── main.tsx           # Entry point
 ```
 
----
-
-License
+## License
 
 MIT © Charles Blackwood

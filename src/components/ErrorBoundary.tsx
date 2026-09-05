@@ -57,7 +57,7 @@ class ErrorBoundary extends Component<Props, State> {
             </h1>
             <p className="error-copy">
               Something unexpected happened while exploring. Don’t worry —
-              your sidequest is safe. Reload to reset the simulation.
+              the signal is safe. Reload to reset the observatory.
             </p>
             <button className="sq-button sq-button-red" onClick={() => window.location.reload()}>
               <RotateCcw size={16} />

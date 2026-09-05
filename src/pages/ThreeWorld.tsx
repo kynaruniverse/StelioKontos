@@ -12,25 +12,25 @@ export default function ThreeWorld() {
 
   return (
     <main className="three-world-shell">
-      <div ref={mountRef} className="three-world-canvas" aria-label="Interactive low-poly Sidequest world" />
+      <div ref={mountRef} className="three-world-canvas" aria-label="Interactive Signal Garden observatory" />
       <div className="world-vignette" />
       <header className="world-topbar">
-        <button className="world-brand" onClick={() => window.location.reload()} aria-label="Restart Sidequest world"><span className="world-brand-mark">SQ</span><span>SIDEQUEST</span></button>
-        <div className="world-status"><span className="status-pip" /> QUEST 001 / ONLINE</div>
+        <button className="world-brand" onClick={() => window.location.reload()} aria-label="Restart Signal Garden"><span className="world-brand-mark">SG</span><span>SIGNAL GARDEN</span></button>
+        <div className="world-status"><span className="status-pip" /> FIELD NODE 07 / LIVE</div>
         <div className="world-status world-status-right">{activeLandmark.toUpperCase()}</div>
       </header>
       <div className="world-hud">
-        <span>ARROW KEYS / WASD</span><span>EXPLORE THE ISLAND</span>
+        <span>ARROW KEYS / WASD</span><span>STEER THE HOVER-SKIFF</span>
       </div>
       <section className={`world-intro ${started ? "is-dismissed" : ""}`} aria-hidden={started}>
-        <p className="world-kicker">A SIDEQUEST ORIGINAL / 001</p>
-        <h1>You found a<br /><i>side quest.</i></h1>
-        <p className="world-lede">A small interactive world for tiny ideas, curious detours, and play without a point. Drive around and find your next direction.</p>
-        <button className="world-start" onClick={() => setStarted(true)}>Start exploring <span>↗</span></button>
-        <p className="world-note">No download. No account. Just a browser and a direction.</p>
+        <p className="world-kicker">AN INTERACTIVE OBSERVATORY / 07</p>
+        <h1>Enter the<br /><i>signal garden.</i></h1>
+        <p className="world-lede">A quiet 3D field for collecting ideas. Pilot a small hover-skiff between listening posts and tune into the parts of the portfolio that are usually hidden.</p>
+        <button className="world-start" onClick={() => setStarted(true)}>Launch the skiff <span>↗</span></button>
+        <p className="world-note">No route is marked. Follow the lights and make your own orbit.</p>
       </section>
-      <aside className="world-legend" aria-label="World landmarks"><span>MAKE</span><span>WANDER</span><span>PLAY</span></aside>
-      <footer className="world-footer"><span>THREE.JS / WEBGL / SIDEQUEST FIELD NOTES</span><span>DRIVE TO A COLOUR / FIND A DIRECTION</span></footer>
+      <aside className="world-legend" aria-label="Signal Garden stations"><span>ARCHIVE</span><span>STUDIO</span><span>LAB</span></aside>
+      <footer className="world-footer"><span>THREE.JS / WEBGL / SIGNAL GARDEN</span><span>COLLECT A SIGNAL / FIND A THREAD</span></footer>
     </main>
   );
 }
