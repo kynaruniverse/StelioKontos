@@ -172,9 +172,12 @@ function addLamp(group: THREE.Group, x: number, z: number) {
   shade.position.y = 6;
   shade.rotation.x = Math.PI;
   lamp.add(shade);
-  const light = new THREE.PointLight(palette.amber, 12, 15, 2);
+  const light = new THREE.PointLight(palette.amber, 10, 14, 2);
   light.position.y = 5.4;
   light.castShadow = true;
+  light.shadow.mapSize.set(1024, 1024);
+  light.shadow.bias = -0.0006;
+  light.shadow.normalBias = 0.04;
   lamp.add(light);
   group.add(lamp);
   return lamp;
@@ -201,13 +204,34 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
 
     let renderer: WebGPURenderer | THREE.WebGLRenderer;
     const resize = () => { if (!renderer) return; const width = mount.clientWidth; const height = Math.max(mount.clientHeight, 1); camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height, false); };
-    const initRenderer = (next: WebGPURenderer | THREE.WebGLRenderer) => { renderer = next; renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15; mount.appendChild(renderer.domElement); renderer.setAnimationLoop(animate); resize(); };
+    const initRenderer = (next: WebGPURenderer | THREE.WebGLRenderer) => { renderer = next; renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace; mount.appendChild(renderer.domElement); renderer.setAnimationLoop(animate); resize(); };
     try { const webgpu = new WebGPURenderer({ antialias: true, forceWebGL: false }); webgpu.init().then(() => initRenderer(webgpu)).catch(() => initRenderer(new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" }))); } catch { initRenderer(new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" })); }
 
-    scene.add(new THREE.HemisphereLight(0x9bb9df, palette.shadow, 2.3));
-    const monitorGlow = new THREE.PointLight(palette.blue, 8, 22, 2);
+    const ambient = new THREE.HemisphereLight(0x9bb9df, 0x120e16, 1.35);
+    scene.add(ambient);
+    const moonKey = new THREE.DirectionalLight(0x86a9d8, 2.2);
+    moonKey.position.set(-18, 28, 16);
+    moonKey.target.position.set(0, 0, -6);
+    moonKey.castShadow = true;
+    moonKey.shadow.mapSize.set(2048, 2048);
+    moonKey.shadow.camera.left = -34;
+    moonKey.shadow.camera.right = 34;
+    moonKey.shadow.camera.top = 34;
+    moonKey.shadow.camera.bottom = -28;
+    moonKey.shadow.camera.near = 1;
+    moonKey.shadow.camera.far = 90;
+    moonKey.shadow.bias = -0.00035;
+    moonKey.shadow.normalBias = 0.025;
+    scene.add(moonKey, moonKey.target);
+    const windowFill = new THREE.PointLight(0x5875b8, 2.1, 32, 2);
+    windowFill.position.set(-15, 11, -18);
+    scene.add(windowFill);
+    const monitorGlow = new THREE.PointLight(palette.blue, 5.8, 22, 2);
     monitorGlow.position.set(2, 8, -12);
     scene.add(monitorGlow);
+    const monitorRim = new THREE.PointLight(0x6e8cff, 1.8, 12, 2);
+    monitorRim.position.set(5, 6, -6);
+    scene.add(monitorRim);
 
     const room = new THREE.Group();
     scene.add(room);
@@ -238,8 +262,8 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     const screenContext = screenCanvas.getContext("2d");
     const screenTexture = new THREE.CanvasTexture(screenCanvas);
     screenTexture.colorSpace = THREE.SRGBColorSpace;
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(9.5, 5.0), new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false }));
-    screen.position.set(0, 5.05, 1.13);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(9.95, 4.72), new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false }));
+    screen.position.set(0, 5.01, 1.13);
     monitor.add(screen);
     const screenGlow = new THREE.PointLight(palette.amber, 2.5, 9, 2);
     screenGlow.position.set(0, 5.1, 0.2);
