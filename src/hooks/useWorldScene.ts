@@ -66,6 +66,42 @@ function labelSprite(text: string, colour = "#e7dfce", background = "#121827") {
   return sprite;
 }
 
+function drawCrtScreen(context: CanvasRenderingContext2D, width: number, height: number, status: string, energyActive: boolean, time: number) {
+  const gradient = context.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, "#091321");
+  gradient.addColorStop(0.55, "#101827");
+  gradient.addColorStop(1, "#1d1b27");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "rgba(239, 174, 103, 0.08)";
+  context.fillRect(0, 0, width, height * 0.42);
+  context.strokeStyle = "rgba(103, 201, 232, 0.13)";
+  context.lineWidth = 2;
+  for (let y = 0; y < height; y += 8) { context.beginPath(); context.moveTo(0, y); context.lineTo(width, y); context.stroke(); }
+  context.fillStyle = "#f0b36b";
+  context.font = "700 32px monospace";
+  context.fillText("AFTER HOURS DESKTOP", 42, 58);
+  context.fillStyle = "#e7dfce";
+  context.font = "700 22px monospace";
+  context.fillText("STELIO KONTOS  /  DESIGN • CODE • 3D", 42, 99);
+  context.fillStyle = "#71c7b1";
+  context.font = "600 20px monospace";
+  context.fillText(`SYSTEM STATUS: ${status}`, 42, 151);
+  context.fillStyle = "#e986a8";
+  context.fillText("CURRENT PROJECT: INTERACTIVE DESK WORLD", 42, 187);
+  context.fillStyle = energyActive ? "#f0a45d" : "#67c9e8";
+  context.fillText(energyActive ? "ENERGY SOURCE: DEADLINE JUICE / ACTIVE" : "ENERGY SOURCE: STANDBY", 42, 223);
+  context.fillStyle = "#e7dfce";
+  context.font = "700 24px monospace";
+  context.fillText("[ SELECTED WORK ]   [ PROCESS ]   [ ABOUT ]", 42, 278);
+  context.fillStyle = "rgba(231, 223, 206, 0.72)";
+  context.font = "18px monospace";
+  context.fillText("BUILD STATUS: ALIVE, SOMEHOW", 42, 322);
+  context.fillStyle = "#67c9e8";
+  context.fillRect(42, 348, Math.max(90, ((Math.sin(time * 0.7) + 1) * 0.5) * 330), 5);
+  if (Math.floor(time * 2) % 2 === 0) { context.fillStyle = "#f0b36b"; context.fillRect(42, 386, 14, 22); }
+}
+
 function addObjectLabel(group: THREE.Group, object: DeskObject) {
   const label = labelSprite(object.label, "#e7dfce", "#121827");
   label.position.copy(object.position).add(new THREE.Vector3(0, object.radius + 1.2, 0));
@@ -89,24 +125,6 @@ function addKeyboard(group: THREE.Group, x: number, z: number) {
   }
   group.add(keyboard);
   return keyboard;
-}
-
-function addMug(group: THREE.Group, x: number, z: number) {
-  const mug = new THREE.Group();
-  mug.position.set(x, 0.5, z);
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.1, 2.1, 12), mat(palette.paper, 0, 0.45));
-  body.position.y = 1.05;
-  body.castShadow = true;
-  mug.add(body);
-  const coffee = new THREE.Mesh(new THREE.CylinderGeometry(1.04, 1.04, 0.08, 12), mat(0x32211d));
-  coffee.position.y = 2.1;
-  mug.add(coffee);
-  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.18, 8, 18, Math.PI * 1.5), mat(palette.paper, 0, 0.45));
-  handle.position.set(1.25, 1.15, 0);
-  handle.rotation.y = Math.PI / 2;
-  mug.add(handle);
-  group.add(mug);
-  return mug;
 }
 
 function addNotebook(group: THREE.Group, x: number, z: number) {
@@ -220,14 +238,18 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     const monitor = new THREE.Group();
     monitor.position.set(2, 0, -11);
     objects.add(monitor);
-    const hologramMaterials: THREE.MeshStandardMaterial[] = [];
-    const hologramLines: THREE.LineSegments[] = [];
-    const hologramScan = new THREE.Mesh(
-      new THREE.PlaneGeometry(12.2, 0.09),
-      new THREE.MeshBasicMaterial({ color: palette.blue, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
-    );
-    hologramScan.position.set(0, 0.7, -1.18);
-    monitor.add(hologramScan);
+    const screenCanvas = document.createElement("canvas");
+    screenCanvas.width = 960;
+    screenCanvas.height = 540;
+    const screenContext = screenCanvas.getContext("2d");
+    const screenTexture = new THREE.CanvasTexture(screenCanvas);
+    screenTexture.colorSpace = THREE.SRGBColorSpace;
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(10.7, 5.95), new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false }));
+    screen.position.set(0, 5.1, 1.12);
+    monitor.add(screen);
+    const screenGlow = new THREE.PointLight(palette.amber, 2.5, 9, 2);
+    screenGlow.position.set(0, 5.1, 0.2);
+    monitor.add(screenGlow);
     let isDisposed = false;
     const assetLoader = new GLTFLoader();
     assetLoader.load(
@@ -242,24 +264,6 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
           if (object instanceof THREE.Mesh) {
             object.castShadow = true;
             object.receiveShadow = true;
-            const materials = Array.isArray(object.material) ? object.material : [object.material];
-            materials.forEach((material) => {
-              const hologramMaterial = material instanceof THREE.MeshStandardMaterial ? material.clone() : new THREE.MeshStandardMaterial({ color: palette.blue });
-              hologramMaterial.color.setHex(0x72e9e3);
-              hologramMaterial.emissive.setHex(0x19d8d0);
-              hologramMaterial.emissiveIntensity = 1.35;
-              hologramMaterial.transparent = true;
-              hologramMaterial.opacity = 0;
-              hologramMaterial.depthWrite = false;
-              hologramMaterial.side = THREE.DoubleSide;
-              hologramMaterials.push(hologramMaterial);
-              object.material = hologramMaterial;
-            });
-            const edgeGeometry = new THREE.EdgesGeometry(object.geometry, 24);
-            const edgeLines = new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: palette.blue, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
-            edgeLines.scale.setScalar(1.004);
-            object.add(edgeLines);
-            hologramLines.push(edgeLines);
           }
         });
         monitor.add(asset);
@@ -268,7 +272,26 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
       (error) => console.error("Unable to load Monitor.glb:", error),
     );
     addKeyboard(objects, 2, -2.3);
-    addMug(objects, 15, -7);
+    const can = new THREE.Group();
+    can.position.set(15, 0, -7);
+    objects.add(can);
+    const canGlow = new THREE.PointLight(palette.amber, 1.2, 5, 2);
+    canGlow.position.set(0, 2.2, 0);
+    can.add(canGlow);
+    assetLoader.load("/Can.glb", (gltf) => {
+      if (isDisposed) return;
+      const asset = gltf.scene;
+      const bounds = new THREE.Box3().setFromObject(asset);
+      const size = bounds.getSize(new THREE.Vector3());
+      asset.scale.setScalar(2.8 / Math.max(size.y, 0.001));
+      asset.rotation.y = -0.12;
+      const scaledBounds = new THREE.Box3().setFromObject(asset);
+      asset.position.y = -scaledBounds.min.y + 0.04;
+      asset.position.x = -((scaledBounds.min.x + scaledBounds.max.x) / 2);
+      asset.position.z = -((scaledBounds.min.z + scaledBounds.max.z) / 2);
+      asset.traverse((object) => { if (object instanceof THREE.Mesh) { object.castShadow = true; object.receiveShadow = true; } });
+      can.add(asset);
+    }, undefined, (error) => console.warn("Can.glb is not available yet:", error));
     addNotebook(objects, -12, 1.5);
     addFidget(objects, 13, 7);
     addStickyNotes(objects, -18, -7);
@@ -277,7 +300,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     const deskObjects: DeskObject[] = [
       { position: new THREE.Vector3(2, 0, -11), title: "Selected work", label: "MONITOR", colour: palette.blue, radius: 6 },
       { position: new THREE.Vector3(2, 0, -2.3), title: "Process and skills", label: "KEYBOARD", colour: palette.mint, radius: 4 },
-      { position: new THREE.Vector3(15, 0, -7), title: "About the maker", label: "MUG", colour: palette.amber, radius: 3 },
+      { position: new THREE.Vector3(15, 0, -7), title: "About the maker", label: "DEADLINE JUICE", colour: palette.amber, radius: 3 },
       { position: new THREE.Vector3(-12, 0, 1.5), title: "Case studies", label: "NOTEBOOK", colour: palette.pink, radius: 4 },
       { position: new THREE.Vector3(13, 0, 7), title: "Experiments", label: "FIDGET TOY", colour: palette.mint, radius: 3 },
       { position: new THREE.Vector3(-18, 0, -7), title: "Ideas in progress", label: "STICKY NOTES", colour: palette.amber, radius: 3 },
@@ -371,20 +394,15 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
       mouseGlow.color.setHex(elapsed.current % 1.8 > 0.9 ? palette.pink : palette.blue);
       const monitorDistance = mouse.position.distanceTo(monitor.position);
       const monitorProximity = THREE.MathUtils.clamp(1 - monitorDistance / 10, 0, 1);
-      const buildProgress = THREE.MathUtils.smoothstep(elapsed.current, 0, 2.4);
-      const flicker = 0.92 + Math.sin(elapsed.current * 31) * 0.035 + Math.sin(elapsed.current * 67) * 0.018;
-      hologramMaterials.forEach((material) => {
-        material.opacity = THREE.MathUtils.clamp((0.23 + monitorProximity * 0.1) * buildProgress * flicker, 0, 0.42);
-        material.emissiveIntensity = 1.15 + monitorProximity * 0.8;
-      });
-      hologramLines.forEach((line) => {
-        const material = line.material as THREE.LineBasicMaterial;
-        material.opacity = THREE.MathUtils.clamp((0.38 + monitorProximity * 0.26) * buildProgress * flicker, 0, 0.78);
-      });
-      hologramScan.position.y = 0.8 + (elapsed.current * 2.6) % 6.5;
-      const scanMaterial = hologramScan.material as THREE.MeshBasicMaterial;
-      scanMaterial.opacity = THREE.MathUtils.clamp((0.42 + monitorProximity * 0.3) * buildProgress * flicker, 0, 0.9);
-      monitorGlow.intensity = 7.5 + monitorProximity * 4 + Math.sin(elapsed.current * 1.5) * 0.6;
+      const canDistance = mouse.position.distanceTo(can.position);
+      const canProximity = THREE.MathUtils.clamp(1 - canDistance / 5, 0, 1);
+      if (screenContext) {
+        drawCrtScreen(screenContext, screenCanvas.width, screenCanvas.height, monitorProximity > 0.35 ? "USER DETECTED" : "IDLE / WAITING", canProximity > 0.2, elapsed.current);
+        screenTexture.needsUpdate = true;
+      }
+      screenGlow.intensity = 2.2 + monitorProximity * 2.4;
+      canGlow.intensity = 1.2 + canProximity * 3.5;
+      monitorGlow.intensity = 5.8 + monitorProximity * 2.4 + Math.sin(elapsed.current * 1.5) * 0.35;
       lookAhead.set(velocity.x * 0.35, 0, velocity.z * 0.35);
       targetCamera.set(mouse.position.x + lookAhead.x, 23, mouse.position.z + 23 + lookAhead.z);
       camera.position.lerp(targetCamera, 1 - Math.pow(0.001, delta));
