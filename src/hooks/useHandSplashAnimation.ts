@@ -87,6 +87,8 @@ export function useHandSplashAnimation({
     let loadedHand: THREE.Group | null = null;
     let handRig: HandRig | null = null;
     let handBasePosition = new THREE.Vector3();
+    const handBaseQuaternion = new THREE.Quaternion();
+    const flourishAxis = new THREE.Vector3(0, 1, 0);
     let completed = false;
     let fadeOutTimer: ReturnType<typeof setTimeout> | null = null;
     let isMounted = true;
@@ -200,7 +202,18 @@ export function useHandSplashAnimation({
         const center = box.getCenter(new THREE.Vector3());
         loadedHand.position.sub(center);
         handBasePosition.copy(loadedHand.position);
-        loadedHand.rotation.set(-0.1, Math.PI / 2, 0);
+
+        // Re-orient the source rig for an upright greeting pose. In the GLB,
+        // local +X runs from wrist toward the fingers and local -Y is the
+        // palm-facing direction. Map those axes to world +Y (fingers up) and
+        // world -Z (palm away from the camera), respectively.
+        const uprightBasis = new THREE.Matrix4().makeBasis(
+          new THREE.Vector3(0, 1, 0),
+          new THREE.Vector3(0, 0, 1),
+          new THREE.Vector3(1, 0, 0),
+        );
+        handBaseQuaternion.setFromRotationMatrix(uprightBasis);
+        loadedHand.quaternion.copy(handBaseQuaternion);
         loadedHand.scale.setScalar(0.9);
 
         try {
@@ -273,7 +286,8 @@ export function useHandSplashAnimation({
         }
 
         applyPose(handRig, pose);
-        loadedHand.rotation.y = Math.PI / 2 + flourish;
+        loadedHand.quaternion.copy(handBaseQuaternion);
+        loadedHand.rotateOnWorldAxis(flourishAxis, flourish);
         loadedHand.position.y = handBasePosition.y + Math.sin(elapsed * 2) * 0.06;
         loadedHand.updateMatrixWorld(true);
       }
