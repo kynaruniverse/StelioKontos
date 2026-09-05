@@ -5,7 +5,7 @@ An interactive portfolio hidden inside a lived-in bedroom workspace. Navigate a 
 ## Features
 
 - **Interactive Desk World** – Explore a procedural bedroom desk from a high three-quarter view.
-- **Computer Mouse Avatar** – Glide freely across the desk using keyboard or touch controls.
+- **Computer Mouse Avatar** – Glide freely across the desk using the custom `public/Mouse.glb` model with keyboard or touch controls.
 - **Object-Based Navigation** – Approach the monitor, keyboard, mug, notebook, sticky notes, and fidget toy to discover different areas of the portfolio.
 - **Reactive Workspace UI** – The pointer status panel shows nearby object detection and signal strength.
 - **Atmospheric Lighting** – Cool monitor light, warm desk-lamp light, soft room shadows, and tactile desk materials create a late-night workspace mood.
@@ -58,7 +58,7 @@ pnpm start
 ## Project Structure
 
 ```text
-├── public/               # Static assets (favicon, 3D model)
+├── public/               # Static assets (favicon, hand splash model, Mouse.glb)
 ├── server/               # Express server for production
 └── src/
     ├── components/       # Reusable components

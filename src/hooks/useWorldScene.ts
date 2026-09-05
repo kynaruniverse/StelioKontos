@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type React from "react";
 import * as THREE from "three";
 import { WebGPURenderer } from "three/webgpu";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 const DESK_WIDTH = 50;
 const DESK_DEPTH = 34;
@@ -251,18 +252,8 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     deskObjects.forEach((object) => addObjectLabel(objects, object));
 
     const mouse = new THREE.Group();
-    const mouseBody = new THREE.Mesh(new THREE.SphereGeometry(1.12, 16, 10), mat(palette.mouse, 0, 0.46));
-    mouseBody.scale.set(0.82, 0.45, 1.28);
-    mouseBody.position.y = 0.95;
-    mouseBody.castShadow = true;
+    const mouseBody = new THREE.Group();
     mouse.add(mouseBody);
-    const mouseSplit = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.08, 1.45), mat(palette.ink));
-    mouseSplit.position.set(0, 1.3, -0.07);
-    mouse.add(mouseSplit);
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.28, 10), mat(palette.blue, 0.75));
-    wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(0, 1.36, -0.12);
-    mouse.add(wheel);
     const sensor = new THREE.Mesh(new THREE.CircleGeometry(0.17, 12), new THREE.MeshBasicMaterial({ color: palette.pink }));
     sensor.rotation.x = -Math.PI / 2;
     sensor.position.y = 0.56;
@@ -272,6 +263,27 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     mouse.add(mouseGlow);
     mouse.position.set(0, 0, 11);
     room.add(mouse);
+    let isDisposed = false;
+    const mouseLoader = new GLTFLoader();
+    mouseLoader.load(
+      "/Mouse.glb",
+      (gltf) => {
+        if (isDisposed) return;
+        const asset = gltf.scene;
+        asset.scale.setScalar(2.6);
+        asset.position.set(0, 0.06, 0);
+        asset.rotation.y = Math.PI;
+        asset.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            object.castShadow = true;
+            object.receiveShadow = true;
+          }
+        });
+        mouseBody.add(asset);
+      },
+      undefined,
+      (error) => console.error("Unable to load Mouse.glb:", error),
+    );
 
     const controls: ControlState = { forward: false, backward: false, left: false, right: false };
     const velocity = new THREE.Vector3();
@@ -335,6 +347,7 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     }
 
     return () => {
+      isDisposed = true;
       renderer?.setAnimationLoop(null);
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
