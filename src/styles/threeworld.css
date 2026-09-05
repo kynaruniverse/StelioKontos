@@ -1,30 +1,36 @@
 @layer components {
-  .three-world-shell { min-height: 100svh; height: 100svh; position: relative; overflow: hidden; background: #070b1d; color: #eaf1ff; font-family: "Space Mono", monospace; }
+  .three-world-shell { min-height: 100svh; height: 100svh; position: relative; overflow: hidden; background: #080a13; color: #e7dfce; font-family: "Space Mono", monospace; }
   .three-world-canvas { position: absolute; inset: 0; z-index: 0; }
   .three-world-canvas canvas { width: 100%; height: 100%; display: block; }
-  .world-vignette { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(circle at 52% 45%, transparent 27%, rgba(3,5,17,.32) 100%), linear-gradient(180deg, rgba(7,11,29,.42), transparent 35%, rgba(7,11,29,.7)); }
-  .world-topbar, .world-hud, .world-footer, .world-legend { position: absolute; z-index: 3; pointer-events: none; }
-  .world-topbar { top: 0; left: 0; right: 0; min-height: 68px; display: flex; align-items: center; justify-content: space-between; padding: 0 clamp(18px, 3vw, 44px); border-bottom: 1px solid rgba(234,241,255,.18); background: rgba(7,11,29,.62); backdrop-filter: blur(12px); }
-  .world-brand { pointer-events: auto; display: inline-flex; align-items: center; gap: 11px; border: 0; background: transparent; color: #eaf1ff; cursor: pointer; font: 700 12px/1 "Space Mono", monospace; letter-spacing: .12em; }
-  .world-brand-mark { width: 33px; height: 33px; display: grid; place-items: center; transform: rotate(45deg); background: #62e5e6; color: #070b1d; font: 900 10px/1 "Space Mono", monospace; box-shadow: 4px 4px 0 #a78bfa; }
-  .world-brand-mark::first-letter { transform: rotate(-45deg); }
-  .world-status { display: flex; align-items: center; gap: 8px; color: rgba(234,241,255,.72); font: 700 9px/1 "Space Mono", monospace; letter-spacing: .14em; text-transform: uppercase; }
-  .status-pip { width: 7px; height: 7px; border-radius: 50%; background: #d6f36a; box-shadow: 0 0 16px #d6f36a; }
-  .world-hud { top: 91px; left: clamp(18px, 3vw, 44px); right: clamp(18px, 3vw, 44px); display: flex; justify-content: space-between; color: rgba(234,241,255,.55); font-size: 8px; letter-spacing: .14em; text-transform: uppercase; }
+  .world-vignette { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(circle at 52% 46%, transparent 25%, rgba(4,5,10,.38) 100%), linear-gradient(180deg, rgba(8,10,19,.54), transparent 34%, rgba(8,10,19,.76)); }
+  .world-topbar, .world-hud, .world-footer, .world-legend, .world-instrument { position: absolute; z-index: 3; pointer-events: none; }
+  .world-topbar { top: 0; left: 0; right: 0; min-height: 68px; display: flex; align-items: center; justify-content: space-between; padding: 0 clamp(18px, 3vw, 44px); border-bottom: 1px solid rgba(231,223,206,.18); background: rgba(8,10,19,.68); backdrop-filter: blur(12px); }
+  .world-brand { pointer-events: auto; display: inline-flex; align-items: center; gap: 11px; border: 0; background: transparent; color: #e7dfce; cursor: pointer; font: 700 12px/1 "Space Mono", monospace; letter-spacing: .12em; }
+  .world-brand-mark { width: 33px; height: 33px; display: grid; place-items: center; background: #f0a45d; color: #080a13; border: 1px solid #e7dfce; transform: rotate(-7deg); box-shadow: 4px 4px 0 #67c9e8; font: 900 10px/1 "Space Mono", monospace; }
+  .world-status { display: flex; align-items: center; gap: 8px; color: rgba(231,223,206,.72); font: 700 9px/1 "Space Mono", monospace; letter-spacing: .14em; text-transform: uppercase; }
+  .status-pip, .instrument-dot { width: 7px; height: 7px; border-radius: 50%; background: #96e5c4; box-shadow: 0 0 16px #96e5c4; }
+  .world-hud { top: 91px; left: clamp(18px, 3vw, 44px); right: clamp(18px, 3vw, 44px); display: flex; justify-content: space-between; color: rgba(231,223,206,.55); font-size: 8px; letter-spacing: .14em; text-transform: uppercase; }
   .world-intro { position: absolute; left: clamp(24px, 7vw, 116px); top: 50%; z-index: 4; width: min(430px, 48vw); transform: translateY(-44%); transition: opacity .55s var(--ease-out), transform .7s var(--ease-out); }
   .world-intro.is-dismissed { opacity: 0; pointer-events: none; transform: translateY(-51%) translateX(-22px); }
-  .world-kicker { margin: 0 0 18px; color: #d6f36a; font: 700 9px/1.4 "Space Mono", monospace; letter-spacing: .18em; text-transform: uppercase; }
-  .world-intro h1 { margin: 0; color: #eaf1ff; font-family: "DM Serif Display", Georgia, serif; font-size: clamp(54px, 7vw, 100px); font-weight: 400; letter-spacing: -.08em; line-height: .82; }
-  .world-intro h1 i { color: #62e5e6; font-style: italic; }
-  .world-lede { max-width: 350px; margin: 28px 0 24px; color: rgba(234,241,255,.74); font: 400 12px/1.65 "Space Mono", monospace; }
-  .world-start { pointer-events: auto; display: inline-flex; align-items: center; gap: 28px; padding: 15px 17px; border: 1px solid #eaf1ff; background: #62e5e6; color: #070b1d; box-shadow: 5px 5px 0 #a78bfa; cursor: pointer; font: 700 10px/1 "Space Mono", monospace; letter-spacing: .1em; text-transform: uppercase; transition: transform .18s var(--ease-out), box-shadow .18s var(--ease-out); touch-action: manipulation; }
-  .world-start:hover { transform: translate(2px, 2px); box-shadow: 3px 3px 0 #a78bfa; }
-  .world-start:active { transform: translate(5px, 5px); box-shadow: 0 0 0 #a78bfa; }
-  .world-note { margin: 18px 0 0; color: rgba(234,241,255,.42); font-size: 8px; letter-spacing: .08em; }
-  .world-legend { right: clamp(18px, 3vw, 44px); bottom: 110px; display: flex; flex-direction: column; gap: 9px; align-items: flex-end; color: rgba(234,241,255,.62); font-size: 8px; letter-spacing: .16em; }
-  .world-legend span::before { content: ""; display: inline-block; width: 18px; height: 1px; margin: 0 8px 3px 0; background: #62e5e6; }
-  .world-footer { left: clamp(18px, 3vw, 44px); right: clamp(18px, 3vw, 44px); bottom: 20px; display: flex; justify-content: space-between; color: rgba(234,241,255,.48); font-size: 8px; letter-spacing: .12em; text-transform: uppercase; }
-  @media (max-width: 768px) { .world-topbar { min-height: 58px; padding: 0 16px; } .world-status { font-size: 7px; } .world-status-right { display: none; } .world-hud { top: 75px; left: 16px; right: 16px; font-size: 7px; } .world-intro { left: 20px; right: 20px; top: 45%; width: auto; transform: translateY(-42%); } .world-intro h1 { font-size: clamp(55px, 18vw, 82px); } .world-lede { max-width: 315px; margin: 22px 0; font-size: 11px; } .world-legend { right: 16px; bottom: 92px; font-size: 7px; } .world-footer { bottom: 14px; font-size: 6px; } .world-footer span:last-child { display: none; } }
-  @media (max-width: 480px) { .world-intro { left: 16px; right: 16px; } .world-intro h1 { font-size: clamp(48px, 15vw, 70px); } .world-lede { max-width: 290px; font-size: 10px; } .world-start { padding: 13px 15px; font-size: 9px; } .world-footer { font-size: 5px; } }
+  .world-kicker { margin: 0 0 18px; color: #f0a45d; font: 700 9px/1.4 "Space Mono", monospace; letter-spacing: .18em; text-transform: uppercase; }
+  .world-intro h1 { margin: 0; color: #e7dfce; font-family: "DM Serif Display", Georgia, serif; font-size: clamp(54px, 7vw, 100px); font-weight: 400; letter-spacing: -.08em; line-height: .82; }
+  .world-intro h1 i { color: #67c9e8; font-style: italic; }
+  .world-lede { max-width: 350px; margin: 28px 0 24px; color: rgba(231,223,206,.74); font: 400 12px/1.65 "Space Mono", monospace; }
+  .world-start { pointer-events: auto; display: inline-flex; align-items: center; gap: 28px; padding: 15px 17px; border: 1px solid #e7dfce; background: #f0a45d; color: #080a13; box-shadow: 5px 5px 0 #67c9e8; cursor: pointer; font: 700 10px/1 "Space Mono", monospace; letter-spacing: .1em; text-transform: uppercase; transition: transform .18s var(--ease-out), box-shadow .18s var(--ease-out); touch-action: manipulation; }
+  .world-start:hover { transform: translate(2px, 2px); box-shadow: 3px 3px 0 #67c9e8; }
+  .world-start:active { transform: translate(5px, 5px); box-shadow: 0 0 0 #67c9e8; }
+  .world-note { margin: 18px 0 0; color: rgba(231,223,206,.42); font-size: 8px; letter-spacing: .08em; }
+  .world-instrument { right: clamp(18px, 3vw, 44px); top: 50%; width: 178px; padding: 13px; border: 1px solid rgba(231,223,206,.28); background: rgba(8,10,19,.66); backdrop-filter: blur(10px); transform: translateY(-50%); color: rgba(231,223,206,.72); }
+  .instrument-label { font-size: 7px; letter-spacing: .16em; }
+  .instrument-value { display: flex; align-items: center; gap: 8px; margin: 10px 0 12px; color: #96e5c4; font-size: 9px; letter-spacing: .12em; }
+  .instrument-meter { height: 4px; background: rgba(231,223,206,.18); overflow: hidden; }
+  .instrument-meter span { display: block; height: 100%; background: #67c9e8; box-shadow: 0 0 12px #67c9e8; transition: width .35s ease; }
+  .instrument-meta { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; font-size: 7px; letter-spacing: .1em; }
+  .instrument-meta strong { color: #f0a45d; font-size: 8px; font-weight: 700; }
+  .world-legend { right: clamp(18px, 3vw, 44px); bottom: 108px; display: flex; flex-direction: column; gap: 9px; align-items: flex-end; color: rgba(231,223,206,.62); font-size: 8px; letter-spacing: .13em; }
+  .world-legend span::before { content: ""; display: inline-block; width: 18px; height: 1px; margin: 0 8px 3px 0; background: #f0a45d; }
+  .world-footer { left: clamp(18px, 3vw, 44px); right: clamp(18px, 3vw, 44px); bottom: 20px; display: flex; justify-content: space-between; color: rgba(231,223,206,.48); font-size: 8px; letter-spacing: .12em; text-transform: uppercase; }
+  @media (max-width: 768px) { .world-topbar { min-height: 58px; padding: 0 16px; } .world-status { font-size: 7px; } .world-status-right { display: none; } .world-hud { top: 75px; left: 16px; right: 16px; font-size: 7px; } .world-intro { left: 20px; right: 20px; top: 43%; width: auto; transform: translateY(-42%); } .world-intro h1 { font-size: clamp(55px, 18vw, 82px); } .world-lede { max-width: 315px; margin: 22px 0; font-size: 11px; } .world-instrument { top: auto; right: 16px; bottom: 104px; width: 148px; transform: none; } .world-legend { display: none; } .world-footer { bottom: 14px; font-size: 6px; } .world-footer span:last-child { display: none; } }
+  @media (max-width: 480px) { .world-intro { left: 16px; right: 16px; } .world-intro h1 { font-size: clamp(48px, 15vw, 70px); } .world-lede { max-width: 290px; font-size: 10px; } .world-start { padding: 13px 15px; font-size: 9px; } .world-instrument { bottom: 86px; } .world-footer { font-size: 5px; } }
   @media (prefers-reduced-motion: reduce) { .world-intro, .world-intro.is-dismissed, .world-start { transition: none; } }
 }

@@ -1,13 +1,34 @@
-# SIGNAL GARDEN
+# AFTER HOURS DESKTOP
 
-An interactive portfolio observatory built around a quiet, nocturnal field of signals. Navigate a floating hover-skiff through orbital rings, antenna towers, signal trails, and three broadcast stations that reveal different parts of the work.
+An interactive portfolio hidden inside a lived-in bedroom workspace. Navigate a computer mouse across a stylized desk, discover the objects around it, and open the creative work hidden between the keyboard, monitor, notebook, mug, sticky notes, and fidget toy.
 
 ## Features
 
-- **Interactive 3D Observatory** – Explore a procedural Signal Garden with three stations: Archive, Studio, and Lab.
-- **Hover-Skiff Navigation** – Use arrow keys / WASD on desktop, or drag on touch devices to steer the floating skiff.
-- **Animated Splash Screen** – A holographic hand assembles from particles before fading into the observatory.
-- **Accessibility** – Focus management, error boundaries, responsive layout, and reduced-motion support.
+- **Interactive Desk World** – Explore a procedural bedroom desk from a high three-quarter view.
+- **Computer Mouse Avatar** – Glide freely across the desk using keyboard or touch controls.
+- **Object-Based Navigation** – Approach the monitor, keyboard, mug, notebook, sticky notes, and fidget toy to discover different areas of the portfolio.
+- **Reactive Workspace UI** – The pointer status panel shows nearby object detection and signal strength.
+- **Atmospheric Lighting** – Cool monitor light, warm desk-lamp light, soft room shadows, and tactile desk materials create a late-night workspace mood.
+- **Animated Splash Screen** – The existing holographic hand animation transitions into a restored desktop session.
+- **Accessibility** – Error boundaries, responsive layout, keyboard controls, touch support, and reduced-motion support.
+
+## Controls
+
+- **Desktop:** Arrow keys or WASD
+- **Touch:** Drag in the direction you want the mouse to glide
+- **Start:** Select `Enter workspace` or press any movement key
+
+## Desk World Mapping
+
+| Desk object | Portfolio area |
+|---|---|
+| Monitor | Selected work and featured projects |
+| Keyboard | Skills, process, and craft |
+| Notebook | Case studies and field notes |
+| Coffee mug | About and personal context |
+| Sticky notes | Ideas in progress |
+| Fidget toy | Experiments and playful work |
+| Desk lamp | Focus and atmosphere |
 
 ## Tech Stack
 

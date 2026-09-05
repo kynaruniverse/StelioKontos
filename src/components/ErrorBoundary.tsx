@@ -57,11 +57,11 @@ class ErrorBoundary extends Component<Props, State> {
             </h1>
             <p className="error-copy">
               Something unexpected happened while exploring. Don’t worry —
-              the signal is safe. Reload to reset the observatory.
+              the workspace is safe. Reload to reset the desktop session.
             </p>
             <button className="sq-button sq-button-red" onClick={() => window.location.reload()}>
               <RotateCcw size={16} />
-              Reload world
+              Reload workspace
             </button>
             <details className="error-details">
               <summary>Technical details</summary>

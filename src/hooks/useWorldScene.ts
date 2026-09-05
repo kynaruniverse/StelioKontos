@@ -3,61 +3,37 @@ import type React from "react";
 import * as THREE from "three";
 import { WebGPURenderer } from "three/webgpu";
 
-const FIELD_SIZE = 58;
-const MAX_SPEED = 8.5;
-const ACCELERATION = 12;
-const FRICTION = 7;
+const DESK_WIDTH = 50;
+const DESK_DEPTH = 34;
+const MAX_SPEED = 7.4;
+const ACCELERATION = 13;
+const FRICTION = 8;
 
 const palette = {
-  space: 0x070b1d,
-  field: 0x10183a,
-  slate: 0x1b2751,
-  ink: 0x050712,
-  cloud: 0xeaf1ff,
-  cyan: 0x62e5e6,
-  lime: 0xd6f36a,
-  violet: 0xa78bfa,
-  pink: 0xf28cb8,
-};
-
-type Landmark = {
-  position: THREE.Vector3;
-  title: string;
-  label: string;
-  colour: number;
+  room: 0x080a13,
+  wall: 0x121827,
+  desk: 0x4a2f26,
+  deskEdge: 0x281a1a,
+  paper: 0xe7dfce,
+  shadow: 0x090a12,
+  monitor: 0x172b46,
+  blue: 0x67c9e8,
+  amber: 0xf0a45d,
+  mint: 0x96e5c4,
+  pink: 0xe986a8,
+  mouse: 0xd8dde7,
+  ink: 0x202536,
 };
 
 type ControlState = { forward: boolean; backward: boolean; left: boolean; right: boolean };
+type DeskObject = { position: THREE.Vector3; title: string; label: string; colour: number; radius: number };
 
-function textSprite(text: string, colour = "#eaf1ff", background = "#10183a") {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 128;
-  const context = canvas.getContext("2d");
-  if (!context) return new THREE.Sprite();
-  context.fillStyle = background;
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.strokeStyle = colour;
-  context.lineWidth = 5;
-  context.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
-  context.fillStyle = colour;
-  context.font = "700 32px Arial, sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(text.toUpperCase(), canvas.width / 2, canvas.height / 2);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
-  sprite.scale.set(4.1, 1.02, 1);
-  return sprite;
+function mat(colour: number, emissive = 0, roughness = 0.8) {
+  return new THREE.MeshStandardMaterial({ color: colour, emissive: colour, emissiveIntensity: emissive, roughness, flatShading: true });
 }
 
-function material(colour: number, emissive = 0) {
-  return new THREE.MeshStandardMaterial({ color: colour, emissive: colour, emissiveIntensity: emissive, roughness: 0.82, flatShading: true });
-}
-
-function addBlock(group: THREE.Group, position: [number, number, number], size: [number, number, number], colour: number, rotation = 0) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material(colour));
+function block(group: THREE.Group, position: [number, number, number], size: [number, number, number], colour: number, rotation = 0, emissive = 0) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), mat(colour, emissive));
   mesh.position.set(...position);
   mesh.rotation.y = rotation;
   mesh.castShadow = true;
@@ -66,40 +42,145 @@ function addBlock(group: THREE.Group, position: [number, number, number], size: 
   return mesh;
 }
 
-function addStation(group: THREE.Group, landmark: Landmark) {
-  const station = new THREE.Group();
-  station.position.copy(landmark.position);
-  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.8, 0.55, 8), material(palette.slate));
-  plinth.position.y = -0.25;
-  plinth.rotation.y = Math.PI / 8;
-  plinth.receiveShadow = true;
-  station.add(plinth);
-  const core = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 1.7, 2.8, 6), material(palette.field));
-  core.position.y = 1.2;
-  core.castShadow = true;
-  station.add(core);
-  for (let i = 0; i < 3; i += 1) {
-    const rod = new THREE.Mesh(new THREE.BoxGeometry(0.12, 4.1, 0.12), material(landmark.colour, 0.5));
-    rod.position.set(Math.cos(i * Math.PI * 2 / 3) * 1.65, 2.2, Math.sin(i * Math.PI * 2 / 3) * 1.65);
-    rod.rotation.z = Math.cos(i * Math.PI * 2 / 3) * 0.3;
-    rod.rotation.x = Math.sin(i * Math.PI * 2 / 3) * 0.3;
-    station.add(rod);
-  }
-  const beacon = new THREE.Mesh(new THREE.IcosahedronGeometry(0.52, 1), material(landmark.colour, 1.1));
-  beacon.position.y = 4.35;
-  beacon.castShadow = true;
-  station.add(beacon);
-  const sign = textSprite(landmark.label, "#eaf1ff", "#10183a");
-  sign.position.set(0, 5.5, 0);
-  station.add(sign);
-  group.add(station);
-  return { beacon, station };
+function labelSprite(text: string, colour = "#e7dfce", background = "#121827") {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 112;
+  const context = canvas.getContext("2d");
+  if (!context) return new THREE.Sprite();
+  context.fillStyle = background;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = colour;
+  context.lineWidth = 5;
+  context.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+  context.fillStyle = colour;
+  context.font = "700 30px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text.toUpperCase(), canvas.width / 2, canvas.height / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+  sprite.scale.set(3.8, 0.84, 1);
+  return sprite;
 }
 
-function addSignalLine(group: THREE.Group, from: THREE.Vector3, to: THREE.Vector3, colour: number) {
-  const points = [from.clone().setY(0.12), new THREE.Vector3((from.x + to.x) / 2, 1.6, (from.z + to.z) / 2), to.clone().setY(0.12)];
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: 0.68 }));
-  group.add(line);
+function addObjectLabel(group: THREE.Group, object: DeskObject) {
+  const label = labelSprite(object.label, "#e7dfce", "#121827");
+  label.position.copy(object.position).add(new THREE.Vector3(0, object.radius + 1.2, 0));
+  group.add(label);
+}
+
+function addKeyboard(group: THREE.Group, x: number, z: number) {
+  const keyboard = new THREE.Group();
+  keyboard.position.set(x, 0.65, z);
+  keyboard.rotation.y = 0.05;
+  block(keyboard, [0, 0, 0], [8.2, 0.32, 3.2], palette.ink, 0, 0.05);
+  for (let row = 0; row < 4; row += 1) {
+    const count = row === 3 ? 7 : 10;
+    for (let column = 0; column < count; column += 1) {
+      const keyWidth = row === 3 ? 0.86 : 0.62;
+      const key = new THREE.Mesh(new THREE.BoxGeometry(keyWidth, 0.12, 0.4), mat(row === 0 ? palette.blue : palette.paper, row === 0 ? 0.22 : 0));
+      key.position.set((column - (count - 1) / 2) * (row === 3 ? 0.98 : 0.7), 0.22, (row - 1.5) * 0.58);
+      key.castShadow = true;
+      keyboard.add(key);
+    }
+  }
+  group.add(keyboard);
+  return keyboard;
+}
+
+function addMonitor(group: THREE.Group, x: number, z: number) {
+  const monitor = new THREE.Group();
+  monitor.position.set(x, 0.5, z);
+  block(monitor, [0, 5.2, 0], [12.2, 7.1, 0.75], palette.ink, 0, 0.08);
+  block(monitor, [0, 5.2, -0.42], [10.9, 5.8, 0.08], palette.monitor, 0, 0.65);
+  for (let i = 0; i < 4; i += 1) block(monitor, [-4.2 + i * 2.6, 6.75, -0.5], [1.8, 0.1, 0.08], i % 2 ? palette.amber : palette.blue, 0, 1);
+  block(monitor, [0, 1.7, 0], [0.55, 3.3, 0.65], palette.ink);
+  block(monitor, [0, 0.15, 0], [5, 0.3, 2.8], palette.ink);
+  const label = labelSprite("SELECTED WORK", "#67c9e8", "#172b46");
+  label.position.set(0, 4.7, -0.55);
+  label.scale.set(3.1, 0.68, 1);
+  monitor.add(label);
+  group.add(monitor);
+  return monitor;
+}
+
+function addMug(group: THREE.Group, x: number, z: number) {
+  const mug = new THREE.Group();
+  mug.position.set(x, 0.5, z);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.1, 2.1, 12), mat(palette.paper, 0, 0.45));
+  body.position.y = 1.05;
+  body.castShadow = true;
+  mug.add(body);
+  const coffee = new THREE.Mesh(new THREE.CylinderGeometry(1.04, 1.04, 0.08, 12), mat(0x32211d));
+  coffee.position.y = 2.1;
+  mug.add(coffee);
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.18, 8, 18, Math.PI * 1.5), mat(palette.paper, 0, 0.45));
+  handle.position.set(1.25, 1.15, 0);
+  handle.rotation.y = Math.PI / 2;
+  mug.add(handle);
+  group.add(mug);
+  return mug;
+}
+
+function addNotebook(group: THREE.Group, x: number, z: number) {
+  const notebook = new THREE.Group();
+  notebook.position.set(x, 0.55, z);
+  notebook.rotation.y = -0.2;
+  block(notebook, [0, 0.28, 0], [7.2, 0.4, 5.2], palette.ink, 0, 0.03);
+  block(notebook, [0, 0.52, -0.04], [6.8, 0.08, 4.8], palette.paper);
+  for (let i = 0; i < 4; i += 1) block(notebook, [-2.2 + i * 1.45, 0.59, -1.1], [0.8, 0.03, 0.08], i % 2 ? palette.pink : palette.blue, 0, 0.2);
+  const label = labelSprite("FIELD LOG", "#e7dfce", "#202536");
+  label.position.set(0, 0.66, 0.9);
+  label.scale.set(2.25, 0.5, 1);
+  notebook.add(label);
+  group.add(notebook);
+  return notebook;
+}
+
+function addFidget(group: THREE.Group, x: number, z: number) {
+  const toy = new THREE.Group();
+  toy.position.set(x, 0.6, z);
+  for (let i = 0; i < 5; i += 1) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.19, 8, 16), mat(i % 2 ? palette.mint : palette.pink, 0.2));
+    ring.position.x = (i - 2) * 0.82;
+    ring.rotation.x = Math.PI / 2;
+    ring.rotation.z = i % 2 ? 0.15 : -0.15;
+    ring.castShadow = true;
+    toy.add(ring);
+  }
+  group.add(toy);
+  return toy;
+}
+
+function addStickyNotes(group: THREE.Group, x: number, z: number) {
+  const stack = new THREE.Group();
+  stack.position.set(x, 0.5, z);
+  for (let i = 0; i < 5; i += 1) {
+    const note = block(stack, [i * 0.08, 0.18 + i * 0.1, -i * 0.04], [3.2, 0.13, 2.5], i % 2 ? palette.amber : palette.mint, -0.08 + i * 0.03);
+    note.castShadow = true;
+  }
+  group.add(stack);
+  return stack;
+}
+
+function addLamp(group: THREE.Group, x: number, z: number) {
+  const lamp = new THREE.Group();
+  lamp.position.set(x, 0.5, z);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.25, 6, 8), mat(palette.ink));
+  stem.position.y = 3;
+  lamp.add(stem);
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(1.6, 1.4, 12, 1, true), mat(palette.amber, 0.5));
+  shade.position.y = 6;
+  shade.rotation.x = Math.PI;
+  lamp.add(shade);
+  const light = new THREE.PointLight(palette.amber, 12, 15, 2);
+  light.position.y = 5.4;
+  light.castShadow = true;
+  lamp.add(light);
+  group.add(lamp);
+  return lamp;
 }
 
 interface UseWorldSceneOptions {
@@ -108,115 +189,89 @@ interface UseWorldSceneOptions {
 }
 
 export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
-  const [activeLandmark, setActiveLandmark] = useState("THE ARRIVAL DECK");
+  const [activeLandmark, setActiveLandmark] = useState("AT ARRIVAL");
+  const [signalStrength, setSignalStrength] = useState(0);
+  const [detectedObject, setDetectedObject] = useState<string | null>(null);
 
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(palette.space);
-    scene.fog = new THREE.Fog(palette.space, 28, 105);
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 160);
-    camera.position.set(0, 9.5, 15);
+    scene.background = new THREE.Color(palette.room);
+    scene.fog = new THREE.Fog(palette.room, 34, 100);
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 140);
+    camera.position.set(0, 24, 25);
 
     let renderer: WebGPURenderer | THREE.WebGLRenderer;
-    const initRenderer = (nextRenderer: WebGPURenderer | THREE.WebGLRenderer) => {
-      renderer = nextRenderer;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFShadowMap;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.25;
-      mount.appendChild(renderer.domElement);
-      renderer.setAnimationLoop(animate);
-      resize();
-    };
-    try {
-      const webgpu = new WebGPURenderer({ antialias: true, forceWebGL: false });
-      webgpu.init().then(() => initRenderer(webgpu)).catch(() => initRenderer(new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" })));
-    } catch {
-      initRenderer(new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" }));
+    const resize = () => { if (!renderer) return; const width = mount.clientWidth; const height = Math.max(mount.clientHeight, 1); camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height, false); };
+    const initRenderer = (next: WebGPURenderer | THREE.WebGLRenderer) => { renderer = next; renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15; mount.appendChild(renderer.domElement); renderer.setAnimationLoop(animate); resize(); };
+    try { const webgpu = new WebGPURenderer({ antialias: true, forceWebGL: false }); webgpu.init().then(() => initRenderer(webgpu)).catch(() => initRenderer(new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" }))); } catch { initRenderer(new THREE.WebGLRenderer({ antialias: true, powerPreference: "low-power" })); }
+
+    scene.add(new THREE.HemisphereLight(0x9bb9df, palette.shadow, 2.3));
+    const monitorGlow = new THREE.PointLight(palette.blue, 8, 22, 2);
+    monitorGlow.position.set(2, 8, -12);
+    scene.add(monitorGlow);
+
+    const room = new THREE.Group();
+    scene.add(room);
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(DESK_WIDTH, 1, DESK_DEPTH), mat(palette.desk, 0, 0.78));
+    desk.position.y = -0.5;
+    desk.receiveShadow = true;
+    room.add(desk);
+    block(room, [0, -1.25, -DESK_DEPTH / 2 + 0.25], [DESK_WIDTH, 0.5, 0.5], palette.deskEdge);
+    const backWall = new THREE.Mesh(new THREE.PlaneGeometry(100, 60), new THREE.MeshStandardMaterial({ color: palette.wall, roughness: 1 }));
+    backWall.position.set(0, 8, -25);
+    room.add(backWall);
+    const windowGlow = new THREE.Mesh(new THREE.PlaneGeometry(19, 10), new THREE.MeshBasicMaterial({ color: 0x18253b, transparent: true, opacity: 0.85 }));
+    windowGlow.position.set(-15, 11, -24.7);
+    room.add(windowGlow);
+    for (let i = 0; i < 18; i += 1) {
+      const grain = block(room, [-22 + i * 2.5, 0.02, -16 + (i % 3) * 11], [1.1, 0.025, 0.035], i % 2 ? 0x674236 : 0x33211f, (i % 3) * 0.08);
+      grain.castShadow = false;
     }
 
-    scene.add(new THREE.HemisphereLight(0xb7d8ff, palette.ink, 2.4));
-    const keyLight = new THREE.DirectionalLight(0xc5f7ff, 3.5);
-    keyLight.position.set(-14, 22, 8);
-    keyLight.castShadow = true;
-    keyLight.shadow.mapSize.set(1024, 1024);
-    keyLight.shadow.camera.left = -35;
-    keyLight.shadow.camera.right = 35;
-    keyLight.shadow.camera.top = 35;
-    keyLight.shadow.camera.bottom = -35;
-    scene.add(keyLight);
+    const objects = new THREE.Group();
+    room.add(objects);
+    addMonitor(objects, 2, -11);
+    addKeyboard(objects, 2, -2.3);
+    addMug(objects, 15, -7);
+    addNotebook(objects, -12, 1.5);
+    addFidget(objects, 13, 7);
+    addStickyNotes(objects, -18, -7);
+    addLamp(objects, -19, -11);
 
-    const field = new THREE.Group();
-    scene.add(field);
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(FIELD_SIZE / 2, 48), material(palette.field));
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    field.add(ground);
-    const outerRing = new THREE.Mesh(new THREE.RingGeometry(25.6, 26, 64), new THREE.MeshBasicMaterial({ color: palette.cyan, transparent: true, opacity: 0.48, side: THREE.DoubleSide }));
-    outerRing.rotation.x = -Math.PI / 2;
-    outerRing.position.y = 0.04;
-    field.add(outerRing);
-    for (let i = 0; i < 12; i += 1) {
-      const angle = i * Math.PI / 6;
-      const x = Math.cos(angle) * 23;
-      const z = Math.sin(angle) * 23;
-      addBlock(field, [x, 0.18, z], [0.22, 0.36, 2.4], i % 2 ? palette.violet : palette.cyan, -angle);
-    }
-    for (let i = 0; i < 70; i += 1) {
-      const angle = i * 2.399;
-      const radius = 6 + ((i * 17) % 190) / 10;
-      const star = new THREE.Mesh(new THREE.SphereGeometry(i % 5 === 0 ? 0.11 : 0.055, 6, 4), material(i % 3 === 0 ? palette.lime : palette.cloud, 0.8));
-      star.position.set(Math.cos(angle) * radius, 0.08 + (i % 4) * 0.04, Math.sin(angle) * radius);
-      field.add(star);
-    }
-
-    const landmarks: Landmark[] = [
-      { position: new THREE.Vector3(-10, 0, -8), title: "Archive frequency", label: "ARCHIVE", colour: palette.cyan },
-      { position: new THREE.Vector3(11, 0, -7), title: "Studio frequency", label: "STUDIO", colour: palette.pink },
-      { position: new THREE.Vector3(8, 0, 10), title: "Lab frequency", label: "LAB", colour: palette.lime },
+    const deskObjects: DeskObject[] = [
+      { position: new THREE.Vector3(2, 0, -11), title: "Selected work", label: "MONITOR", colour: palette.blue, radius: 6 },
+      { position: new THREE.Vector3(2, 0, -2.3), title: "Process and skills", label: "KEYBOARD", colour: palette.mint, radius: 4 },
+      { position: new THREE.Vector3(15, 0, -7), title: "About the maker", label: "MUG", colour: palette.amber, radius: 3 },
+      { position: new THREE.Vector3(-12, 0, 1.5), title: "Case studies", label: "NOTEBOOK", colour: palette.pink, radius: 4 },
+      { position: new THREE.Vector3(13, 0, 7), title: "Experiments", label: "FIDGET TOY", colour: palette.mint, radius: 3 },
+      { position: new THREE.Vector3(-18, 0, -7), title: "Ideas in progress", label: "STICKY NOTES", colour: palette.amber, radius: 3 },
     ];
-    const stations = landmarks.map((landmark) => addStation(field, landmark));
-    landmarks.forEach((landmark) => addSignalLine(field, new THREE.Vector3(0, 0, 11), landmark.position, landmark.colour));
-    addSignalLine(field, landmarks[0].position, landmarks[1].position, palette.violet);
-    addSignalLine(field, landmarks[1].position, landmarks[2].position, palette.cyan);
+    deskObjects.forEach((object) => addObjectLabel(objects, object));
 
-    const antenna = new THREE.Group();
-    antenna.position.set(-1, 0, -1);
-    const antennaStem = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 5.5, 8), material(palette.slate));
-    antennaStem.position.y = 2.75;
-    antenna.add(antennaStem);
-    const antennaDish = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), material(palette.violet, 0.3));
-    antennaDish.position.y = 5.5;
-    antennaDish.rotation.x = -0.45;
-    antenna.add(antennaDish);
-    field.add(antenna);
-
-    const skiff = new THREE.Group();
-    const hull = new THREE.Mesh(new THREE.CapsuleGeometry(0.68, 1.7, 4, 10), material(palette.cloud));
-    hull.rotation.x = Math.PI / 2;
-    hull.position.y = 0.72;
-    hull.castShadow = true;
-    skiff.add(hull);
-    const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.56, 12, 6), material(palette.violet, 0.25));
-    canopy.scale.set(1, 0.5, 1.35);
-    canopy.position.set(0, 1.18, -0.18);
-    canopy.castShadow = true;
-    skiff.add(canopy);
-    [-0.72, 0.72].forEach((x) => {
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 1.65), material(palette.cyan, 0.55));
-      fin.position.set(x, 0.42, 0.12);
-      fin.rotation.z = x < 0 ? -0.12 : 0.12;
-      skiff.add(fin);
-    });
-    const halo = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.06, 8, 32), new THREE.MeshBasicMaterial({ color: palette.cyan, transparent: true, opacity: 0.85 }));
-    halo.rotation.x = Math.PI / 2;
-    halo.position.y = 0.22;
-    skiff.add(halo);
-    skiff.position.set(0, 0, 11);
-    field.add(skiff);
+    const mouse = new THREE.Group();
+    const mouseBody = new THREE.Mesh(new THREE.SphereGeometry(1.12, 16, 10), mat(palette.mouse, 0, 0.46));
+    mouseBody.scale.set(0.82, 0.45, 1.28);
+    mouseBody.position.y = 0.95;
+    mouseBody.castShadow = true;
+    mouse.add(mouseBody);
+    const mouseSplit = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.08, 1.45), mat(palette.ink));
+    mouseSplit.position.set(0, 1.3, -0.07);
+    mouse.add(mouseSplit);
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.28, 10), mat(palette.blue, 0.75));
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(0, 1.36, -0.12);
+    mouse.add(wheel);
+    const sensor = new THREE.Mesh(new THREE.CircleGeometry(0.17, 12), new THREE.MeshBasicMaterial({ color: palette.pink }));
+    sensor.rotation.x = -Math.PI / 2;
+    sensor.position.y = 0.56;
+    mouse.add(sensor);
+    const mouseGlow = new THREE.PointLight(palette.pink, 1.5, 3, 2);
+    mouseGlow.position.y = 0.3;
+    mouse.add(mouseGlow);
+    mouse.position.set(0, 0, 11);
+    room.add(mouse);
 
     const controls: ControlState = { forward: false, backward: false, left: false, right: false };
     const velocity = new THREE.Vector3();
@@ -241,10 +296,18 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     shell?.addEventListener("touchmove", handleTouchMove as EventListener, { passive: false });
     shell?.addEventListener("touchend", handleTouchEnd);
     shell?.addEventListener("touchcancel", handleTouchEnd);
-
-    const resize = () => { if (!renderer) return; const width = mount.clientWidth; const height = Math.max(mount.clientHeight, 1); camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height, false); };
     window.addEventListener("resize", resize);
-    const checkLandmarks = () => { let next = "THE ARRIVAL DECK"; landmarks.forEach((landmark) => { if (skiff.position.distanceTo(landmark.position) < 5.6) next = landmark.title; }); setActiveLandmark((current) => current === next ? current : next); };
+
+    const checkObjects = () => {
+      let nearestIndex = -1;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      deskObjects.forEach((object, index) => { const distance = mouse.position.distanceTo(object.position); if (distance < nearestDistance) { nearestIndex = index; nearestDistance = distance; } });
+      const nearest = nearestIndex >= 0 ? deskObjects[nearestIndex] : null;
+      const strength = nearest ? THREE.MathUtils.clamp(100 - nearestDistance * 17, 0, 100) : 0;
+      setSignalStrength(Math.round(strength));
+      setDetectedObject(nearest && nearestDistance < nearest.radius ? nearest.label : null);
+      setActiveLandmark(nearest && nearestDistance < nearest.radius ? nearest.title : "SCANNING DESK");
+    };
 
     function animate(timestamp?: number) {
       timer.update(timestamp);
@@ -252,22 +315,22 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
       elapsed.current += delta;
       const active = { forward: controls.forward || touchControls.forward, backward: controls.backward || touchControls.backward, left: controls.left || touchControls.left, right: controls.right || touchControls.right };
       const input = new THREE.Vector3((active.right ? 1 : 0) - (active.left ? 1 : 0), 0, (active.backward ? 1 : 0) - (active.forward ? 1 : 0));
-      if (input.lengthSq() > 0) { input.normalize(); velocity.x = THREE.MathUtils.damp(velocity.x, input.x * MAX_SPEED, ACCELERATION, delta); velocity.z = THREE.MathUtils.damp(velocity.z, input.z * MAX_SPEED, ACCELERATION, delta); skiff.rotation.y = THREE.MathUtils.damp(skiff.rotation.y, Math.atan2(velocity.x, velocity.z), 8, delta); } else { velocity.x = THREE.MathUtils.damp(velocity.x, 0, FRICTION, delta); velocity.z = THREE.MathUtils.damp(velocity.z, 0, FRICTION, delta); }
-      const previous = skiff.position.clone();
-      skiff.position.addScaledVector(velocity, delta);
-      skiff.position.x = THREE.MathUtils.clamp(skiff.position.x, -FIELD_SIZE / 2 + 2, FIELD_SIZE / 2 - 2);
-      skiff.position.z = THREE.MathUtils.clamp(skiff.position.z, -FIELD_SIZE / 2 + 2, FIELD_SIZE / 2 - 2);
-      if (skiff.position.length() > FIELD_SIZE / 2 - 1) skiff.position.copy(previous);
-      skiff.position.y = Math.sin(elapsed.current * 2.4) * 0.12;
-      hull.rotation.z = THREE.MathUtils.damp(hull.rotation.z, -velocity.x * 0.04, 7, delta);
-      halo.rotation.z += delta * 1.5;
-      stations.forEach(({ beacon, station }) => { beacon.rotation.y += delta * 2; beacon.position.y = 4.35 + Math.sin(elapsed.current * 3 + station.position.x) * 0.16; });
-      antenna.rotation.y += delta * 0.18;
-      lookAhead.set(velocity.x * 0.3, 0, velocity.z * 0.3);
-      targetCamera.set(skiff.position.x + lookAhead.x, 8.8, skiff.position.z + 12 + lookAhead.z);
+      if (input.lengthSq() > 0) { input.normalize(); velocity.x = THREE.MathUtils.damp(velocity.x, input.x * MAX_SPEED, ACCELERATION, delta); velocity.z = THREE.MathUtils.damp(velocity.z, input.z * MAX_SPEED, ACCELERATION, delta); mouse.rotation.y = THREE.MathUtils.damp(mouse.rotation.y, Math.atan2(velocity.x, velocity.z), 9, delta); } else { velocity.x = THREE.MathUtils.damp(velocity.x, 0, FRICTION, delta); velocity.z = THREE.MathUtils.damp(velocity.z, 0, FRICTION, delta); }
+      const previous = mouse.position.clone();
+      mouse.position.addScaledVector(velocity, delta);
+      mouse.position.x = THREE.MathUtils.clamp(mouse.position.x, -DESK_WIDTH / 2 + 2, DESK_WIDTH / 2 - 2);
+      mouse.position.z = THREE.MathUtils.clamp(mouse.position.z, -DESK_DEPTH / 2 + 2, DESK_DEPTH / 2 - 2);
+      if (mouse.position.z < -DESK_DEPTH / 2 + 2) mouse.position.copy(previous);
+      mouse.position.y = Math.sin(elapsed.current * 3) * 0.035;
+      mouseBody.rotation.z = THREE.MathUtils.damp(mouseBody.rotation.z, -velocity.x * 0.04, 8, delta);
+      sensor.material.color.setHex(elapsed.current % 1.8 > 0.9 ? palette.pink : palette.blue);
+      mouseGlow.color.setHex(elapsed.current % 1.8 > 0.9 ? palette.pink : palette.blue);
+      monitorGlow.intensity = 7.5 + Math.sin(elapsed.current * 1.5) * 0.6;
+      lookAhead.set(velocity.x * 0.35, 0, velocity.z * 0.35);
+      targetCamera.set(mouse.position.x + lookAhead.x, 23, mouse.position.z + 23 + lookAhead.z);
       camera.position.lerp(targetCamera, 1 - Math.pow(0.001, delta));
-      camera.lookAt(skiff.position.x + lookAhead.x, 0.8, skiff.position.z - 2 + lookAhead.z);
-      if (elapsed.current - lastCheck > 0.45) { checkLandmarks(); lastCheck = elapsed.current; }
+      camera.lookAt(mouse.position.x + lookAhead.x, 0, mouse.position.z - 1 + lookAhead.z);
+      if (elapsed.current - lastCheck > 0.35) { checkObjects(); lastCheck = elapsed.current; }
       renderer?.render(scene, camera);
     }
 
@@ -286,5 +349,5 @@ export function useWorldScene({ mountRef, onStart }: UseWorldSceneOptions) {
     };
   }, [mountRef, onStart]);
 
-  return { activeLandmark };
+  return { activeLandmark, signalStrength, detectedObject };
 }

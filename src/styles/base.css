@@ -2,7 +2,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* SIGNAL GARDEN — nocturnal field tones, luminous signal colour, and observatory UI. */
+/* AFTER HOURS DESKTOP — warm midnight tones, tactile desk objects, and quiet utility UI. */
 
 @custom-variant dark (&:is(.dark *));
 

@@ -32,7 +32,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       className="splash-screen"
       role="dialog"
       aria-modal="true"
-      aria-label="Calibrating Signal Garden"
+      aria-label="Restoring After Hours Desktop workspace"
       aria-describedby="splash-loading-text"
       onKeyDown={handleDialogKeyDown}
       style={{
@@ -72,11 +72,11 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       >
         {loadError ? (
           <p style={{ fontSize: "12px", textTransform: "uppercase", color: "#f25d4d" }}>
-            Hand failed to load. Press Skip to continue.
+            Workspace failed to load. Press Skip to continue.
           </p>
         ) : (
           <p style={{ fontSize: "12px", textTransform: "uppercase" }}>
-            Counting down…
+            Restoring desktop session…
           </p>
         )}
       </div>
